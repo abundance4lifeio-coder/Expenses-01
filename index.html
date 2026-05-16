@@ -1,0 +1,1765 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="הוצאות">
+<meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<title>הוצאות</title>
+
+<!-- SheetJS for .xlsx parsing (Israeli card statements). Cached after first load. -->
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+:root {
+  color-scheme: light dark;
+  --bg: #f2f2f7;
+  --bg-elevated: #ffffff;
+  --card: #ffffff;
+  --text: #000;
+  --text-secondary: #8e8e93;
+  --text-tertiary: #c7c7cc;
+  --separator: rgba(60, 60, 67, 0.18);
+  --accent: #007aff;
+  --accent-pressed: #0051a8;
+  --danger: #ff3b30;
+  --family: #ff9500;
+  --personal: #5856d6;
+  --field-bg: rgba(118, 118, 128, 0.08);
+  --overlay-bg: rgba(0,0,0,0.45);
+  --header-bg: rgba(248, 248, 250, 0.82);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #000;
+    --bg-elevated: #1c1c1e;
+    --card: #1c1c1e;
+    --text: #fff;
+    --text-secondary: #8e8e93;
+    --text-tertiary: #48484a;
+    --separator: rgba(84, 84, 88, 0.65);
+    --field-bg: rgba(118, 118, 128, 0.24);
+    --overlay-bg: rgba(0,0,0,0.6);
+    --header-bg: rgba(0, 0, 0, 0.78);
+  }
+}
+
+html, body {
+  background: var(--bg); color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Arial Hebrew", "Helvetica Neue", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior-y: none;
+}
+
+body {
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  min-height: 100vh;
+}
+
+.header {
+  position: sticky;
+  top: env(safe-area-inset-top);
+  background: var(--header-bg);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: 0.5px solid var(--separator);
+  padding: 10px 16px;
+  display: flex; align-items: center; justify-content: space-between;
+  z-index: 10;
+}
+.header h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.3px; }
+.header-actions { display: flex; gap: 8px; align-items: center; }
+
+.save-btn {
+  background: var(--accent); color: white;
+  border: none; padding: 7px 16px; border-radius: 100px;
+  font-size: 15px; font-weight: 600; font-family: inherit;
+  cursor: pointer; display: none; transition: transform 0.1s;
+}
+.save-btn.visible { display: inline-block; }
+.save-btn:active { transform: scale(0.96); background: var(--accent-pressed); }
+
+.icon-btn {
+  background: var(--field-bg);
+  border: none; width: 32px; height: 32px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text); cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+}
+.icon-btn:active { transform: scale(0.92); }
+.icon-btn svg { width: 17px; height: 17px; }
+
+.search {
+  padding: 10px 16px 0;
+  position: sticky;
+  top: calc(env(safe-area-inset-top) + 49px);
+  background: var(--bg);
+  z-index: 9;
+}
+.search input {
+  width: 100%; background: var(--field-bg); border: none; border-radius: 10px;
+  padding-block: 9px;
+  padding-inline-start: 32px;
+  padding-inline-end: 12px;
+  font-size: 15px; font-family: inherit; color: var(--text);
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238e8e93' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><circle cx='11' cy='11' r='7'/><path d='m21 21-4.3-4.3'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 14px;
+  text-align: start;
+}
+.search input::placeholder { color: var(--text-secondary); }
+.search input:focus { outline: none; }
+
+.container { padding: 12px 16px 100px; max-width: 640px; margin: 0 auto; }
+
+.segment {
+  display: flex; background: var(--field-bg); border-radius: 9px; padding: 2px;
+  margin: 4px 0 12px;
+}
+.segment button {
+  flex: 1; background: transparent; border: 0; padding: 7px 0;
+  font-size: 13px; font-weight: 500; color: var(--text);
+  border-radius: 7px; cursor: pointer; font-family: inherit;
+  transition: background 0.15s;
+}
+.segment button.active {
+  background: var(--card);
+  box-shadow: 0 3px 8px rgba(0,0,0,0.10);
+}
+
+.scope-chips, .card-chips {
+  display: flex; gap: 8px; margin: 0 0 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 2px;
+}
+.scope-chips::-webkit-scrollbar, .card-chips::-webkit-scrollbar { display: none; }
+
+.scope-chip, .card-chip {
+  background: var(--field-bg); border: 0; padding: 6px 14px;
+  border-radius: 100px; font-size: 13px; color: var(--text);
+  font-family: inherit; cursor: pointer; font-weight: 500;
+  white-space: nowrap; flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+}
+.scope-chip.active, .card-chip.active { background: var(--accent); color: white; }
+.scope-chip[data-scope="Family"].active { background: var(--family); }
+.scope-chip[data-scope="Personal"].active { background: var(--personal); }
+
+.card-chips { margin-bottom: 18px; }
+
+.total-card {
+  background: var(--card); border-radius: 14px;
+  padding: 26px 20px; text-align: center;
+}
+.total-amount {
+  font-size: 46px; font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -1.2px; line-height: 1.05;
+  direction: ltr; unicode-bidi: isolate;
+}
+.total-label { font-size: 13px; color: var(--text-secondary); margin-top: 8px; }
+.total-count { font-size: 13px; color: var(--text-secondary); margin-top: 8px; }
+
+.section-title {
+  font-size: 12px; text-transform: uppercase; letter-spacing: 0.6px;
+  color: var(--text-secondary); margin: 26px 16px 8px; font-weight: 500;
+}
+
+.card { background: var(--card); border-radius: 14px; overflow: hidden; }
+
+.cat-row, .card-row { padding: 14px 16px; border-bottom: 0.5px solid var(--separator); }
+.cat-row:last-child, .card-row:last-child { border-bottom: 0; }
+.cat-header, .card-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+.cat-name, .card-name { font-size: 15px; font-weight: 500; }
+.cat-amount, .card-amount {
+  font-size: 15px; font-variant-numeric: tabular-nums;
+  direction: ltr; unicode-bidi: isolate;
+}
+.bar { height: 5px; background: var(--field-bg); border-radius: 3px; overflow: hidden; }
+.bar-fill { height: 100%; background: var(--accent); border-radius: 3px; transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1); }
+.card-row .bar-fill { background: #34c759; }
+
+.tx-row {
+  display: flex; padding: 13px 16px; border-bottom: 0.5px solid var(--separator);
+  align-items: center; cursor: pointer;
+  border-inline-start: 3px solid transparent;
+}
+.tx-row[data-scope="Family"] { border-inline-start-color: var(--family); }
+.tx-row[data-scope="Personal"] { border-inline-start-color: var(--personal); }
+.tx-row:last-child { border-bottom: 0; }
+.tx-row:active { background: var(--field-bg); }
+.tx-info { flex: 1; min-width: 0; padding-inline-end: 8px; }
+.tx-merchant {
+  font-size: 16px; font-weight: 500;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.tx-meta {
+  font-size: 13px; color: var(--text-secondary); margin-top: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.tx-tag { display: inline; color: var(--text); font-weight: 500; }
+.tx-amount {
+  font-size: 16px; font-variant-numeric: tabular-nums;
+  font-weight: 500; margin-inline-start: 4px; white-space: nowrap;
+  direction: ltr; unicode-bidi: isolate;
+}
+.tx-chevron { color: var(--text-tertiary); margin-inline-start: 10px; font-size: 19px; line-height: 1; }
+
+.empty {
+  text-align: center; padding: 40px 24px; color: var(--text-secondary);
+  font-size: 15px; line-height: 1.5;
+}
+.empty strong { color: var(--text); }
+
+.fab {
+  position: fixed;
+  inset-inline-end: 20px; bottom: calc(20px + env(safe-area-inset-bottom));
+  width: 56px; height: 56px;
+  background: var(--accent); color: white;
+  border: none; border-radius: 50%;
+  font-size: 30px; line-height: 1; font-weight: 300;
+  box-shadow: 0 4px 20px rgba(0, 122, 255, 0.4);
+  z-index: 5; cursor: pointer; transition: transform 0.15s;
+}
+.fab:active { transform: scale(0.92); }
+
+.modal-overlay {
+  position: fixed; inset: 0; background: var(--overlay-bg);
+  display: none; align-items: flex-end; justify-content: center;
+  z-index: 20; animation: fadeIn 0.2s ease;
+}
+.modal-overlay.visible { display: flex; }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+
+.modal {
+  background: var(--bg); width: 100%; max-width: 640px;
+  border-radius: 16px 16px 0 0;
+  padding: 14px 16px calc(24px + env(safe-area-inset-bottom));
+  max-height: 92vh; overflow-y: auto;
+  animation: slideUp 0.28s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.modal-handle {
+  width: 36px; height: 5px; background: var(--text-tertiary);
+  border-radius: 3px; margin: 0 auto 14px; opacity: 0.5;
+}
+.modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
+.modal-title { font-size: 17px; font-weight: 600; letter-spacing: -0.2px; }
+.modal-cancel, .modal-save {
+  background: none; border: none; font-size: 15px; font-family: inherit;
+  cursor: pointer; padding: 4px 0; color: var(--accent);
+}
+.modal-save { font-weight: 600; }
+.modal-save:disabled { color: var(--text-tertiary); cursor: default; }
+
+.field {
+  background: var(--card); border-radius: 10px;
+  padding: 12px 14px; margin-bottom: 10px;
+  display: flex; align-items: center;
+}
+.field-label { font-size: 14px; color: var(--text-secondary); width: 86px; flex-shrink: 0; }
+.field input, .field select, .field textarea {
+  flex: 1; background: transparent; border: none;
+  font-size: 16px; color: var(--text); font-family: inherit;
+  outline: none; -webkit-appearance: none;
+  text-align: start;
+}
+.field input[type="number"], .field input[type="datetime-local"] {
+  direction: ltr; text-align: start;
+}
+
+.field-segment {
+  display: flex; flex: 1; background: var(--field-bg);
+  border-radius: 8px; padding: 2px;
+}
+.field-segment button {
+  flex: 1; background: transparent; border: 0; padding: 6px 0;
+  font-size: 14px; color: var(--text); border-radius: 6px;
+  font-family: inherit; cursor: pointer; transition: background 0.15s, color 0.15s;
+}
+.field-segment button.active {
+  background: var(--card); font-weight: 500;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.10);
+}
+.field-segment button[data-scope="Family"].active { color: var(--family); }
+.field-segment button[data-scope="Personal"].active { color: var(--personal); }
+
+.delete-btn {
+  width: 100%; background: var(--card); color: var(--danger);
+  border: none; padding: 14px; font-size: 16px; font-weight: 500;
+  font-family: inherit; border-radius: 10px; margin-top: 16px; cursor: pointer;
+  transition: background 0.1s;
+}
+.delete-btn:active { background: var(--field-bg); }
+
+/* Import preview */
+.import-info {
+  background: var(--card); border-radius: 10px;
+  padding: 14px; margin-bottom: 14px;
+  font-size: 14px; line-height: 1.5;
+}
+.import-info strong { color: var(--text); }
+.import-summary {
+  font-size: 13px; color: var(--text-secondary);
+  margin-top: 12px; text-align: center;
+}
+.import-summary .count { color: var(--accent); font-weight: 600; }
+.import-summary .dup { color: var(--text-tertiary); }
+.preview-row {
+  display: flex; padding: 10px 14px;
+  border-bottom: 0.5px solid var(--separator);
+  align-items: center;
+  font-size: 13px;
+}
+.preview-row:last-child { border-bottom: 0; }
+.preview-row.skipped { opacity: 0.4; text-decoration: line-through; }
+.preview-info { flex: 1; min-width: 0; padding-inline-end: 8px; }
+.preview-merchant {
+  font-weight: 500; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  font-size: 14px;
+}
+.preview-meta {
+  font-size: 11px; color: var(--text-secondary); margin-top: 2px;
+}
+.preview-amount {
+  font-variant-numeric: tabular-nums; font-weight: 500;
+  direction: ltr; unicode-bidi: isolate;
+}
+
+/* Swipe gesture */
+.tx-swipe-wrap {
+  position: relative;
+  overflow: hidden;
+  background: var(--card);
+  border-bottom: 0.5px solid var(--separator);
+}
+.tx-swipe-wrap:last-child { border-bottom: 0; }
+.tx-swipe-wrap .tx-row {
+  border-bottom: 0;
+  position: relative;
+  z-index: 2;
+  background: var(--card);
+  touch-action: pan-y;
+  will-change: transform;
+  transition: transform 0.25s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.tx-swipe-wrap.swiping .tx-row { transition: none; }
+.tx-swipe-wrap.commit-left .tx-row { transform: translateX(-100%); opacity: 0.4; }
+.tx-swipe-wrap.commit-right .tx-row { transform: translateX(100%); opacity: 0.4; }
+
+.swipe-bg {
+  position: absolute; top: 0; bottom: 0;
+  display: flex; align-items: center;
+  padding: 0 20px;
+  font-size: 15px; font-weight: 600; color: white;
+  letter-spacing: 0.2px;
+  z-index: 1;
+  width: 50%;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.swipe-bg-family {
+  right: 0; left: auto;
+  background: var(--family);
+  justify-content: flex-start;
+}
+.swipe-bg-personal {
+  left: 0; right: auto;
+  background: var(--personal);
+  justify-content: flex-end;
+}
+.tx-swipe-wrap.show-family .swipe-bg-family { opacity: 1; }
+.tx-swipe-wrap.show-personal .swipe-bg-personal { opacity: 1; }
+.tx-swipe-wrap.ready .swipe-bg { font-size: 16px; }
+
+.toast {
+  position: fixed; bottom: calc(90px + env(safe-area-inset-bottom));
+  left: 50%; transform: translateX(-50%) translateY(10px);
+  background: rgba(0,0,0,0.85); color: white;
+  padding: 10px 18px; border-radius: 100px;
+  font-size: 14px; z-index: 100; opacity: 0;
+  transition: opacity 0.25s, transform 0.25s;
+  pointer-events: none; white-space: nowrap; max-width: 90vw;
+}
+.toast.visible { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+.undo-toast {
+  position: fixed; bottom: calc(90px + env(safe-area-inset-bottom));
+  left: 50%; transform: translateX(-50%) translateY(10px);
+  background: rgba(0,0,0,0.88); color: white;
+  padding: 13px 36px;
+  border: none; border-radius: 100px;
+  font-size: 15px; font-weight: 600;
+  font-family: inherit;
+  z-index: 100; opacity: 0;
+  transition: opacity 0.25s, transform 0.25s;
+  pointer-events: none;
+  cursor: pointer;
+  overflow: hidden;
+}
+.undo-toast.visible { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto; }
+.undo-toast:active { background: rgba(0,0,0,0.95); }
+.undo-toast .undo-progress {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  height: 2px; background: rgba(255,255,255,0.12); overflow: hidden;
+}
+.undo-toast .undo-progress::after {
+  content: ''; display: block; height: 100%;
+  background: rgba(255,255,255,0.55);
+  animation: undoCountdown 3s linear forwards;
+}
+.undo-toast .undo-progress::after {
+  content: ''; display: block; height: 100%;
+  background: rgba(255,255,255,0.5);
+  animation: undoCountdown 3s linear forwards;
+}
+@keyframes undoCountdown { from { width: 100%; } to { width: 0%; } }
+
+/* Select mode */
+.tx-checkbox {
+  width: 22px; height: 22px;
+  border: 2px solid var(--text-tertiary);
+  border-radius: 50%;
+  margin-inline-end: 12px;
+  flex-shrink: 0;
+  position: relative;
+  transition: background 0.15s, border-color 0.15s;
+}
+.tx-row.selected .tx-checkbox {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.tx-row.selected .tx-checkbox::after {
+  content: '';
+  position: absolute;
+  left: 5px; top: 1px;
+  width: 6px; height: 11px;
+  border-right: 2px solid white;
+  border-bottom: 2px solid white;
+  transform: rotate(45deg);
+}
+
+/* Disable swipe visuals in select mode */
+.select-mode .swipe-bg { display: none; }
+.select-mode .tx-row { transform: none !important; }
+
+.select-cancel {
+  background: none; border: none;
+  color: var(--accent); font-size: 16px;
+  font-family: inherit; padding: 4px 0;
+  cursor: pointer; font-weight: 500;
+}
+.select-count {
+  font-size: 17px; font-weight: 600;
+  color: var(--text); letter-spacing: -0.2px;
+  margin-inline-start: 10px;
+}
+.select-all {
+  background: none; border: none;
+  color: var(--accent); font-size: 15px;
+  font-family: inherit; padding: 4px 0;
+  cursor: pointer;
+}
+
+.action-bar {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  background: var(--header-bg);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border-top: 0.5px solid var(--separator);
+  padding: 12px 16px calc(16px + env(safe-area-inset-bottom));
+  z-index: 15;
+  transform: translateY(110%);
+  transition: transform 0.28s cubic-bezier(0.32, 0.72, 0, 1);
+  display: flex; gap: 10px;
+  max-width: 640px; margin: 0 auto;
+}
+.action-bar.visible { transform: translateY(0); }
+.action-bar button {
+  flex: 1;
+  padding: 13px 8px;
+  border: none; border-radius: 12px;
+  font-size: 15px; font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  background: var(--field-bg);
+  color: var(--text);
+  transition: transform 0.1s, opacity 0.15s;
+}
+.action-bar button:active { transform: scale(0.97); }
+.action-bar button.family { background: var(--family); color: white; }
+.action-bar button.personal { background: var(--personal); color: white; }
+.action-bar.disabled button { opacity: 0.4; pointer-events: none; }
+
+.select-mode .fab { display: none; }
+</style>
+</head>
+<body>
+
+<div class="header" id="header">
+  <h1 id="headerTitle">הוצאות</h1>
+  <div class="header-actions" id="headerActions">
+    <button class="icon-btn" onclick="enterSelectMode()" aria-label="בחירה">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="9 11 12 14 22 4"/>
+        <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+      </svg>
+    </button>
+    <button class="icon-btn" onclick="startImport()" aria-label="ייבוא">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="17 8 12 3 7 8"/>
+        <line x1="12" y1="3" x2="12" y2="15"/>
+      </svg>
+    </button>
+    <button class="save-btn" id="saveBtn" onclick="saveChanges()">שמירה</button>
+  </div>
+</div>
+
+<input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display:none">
+
+<div class="search">
+  <input type="search" id="searchInput" placeholder="חיפוש בית עסק, תגית, קטגוריה או כרטיס">
+</div>
+
+<div class="container">
+  <div class="segment" id="periodSegment">
+    <button data-period="week">שבוע</button>
+    <button data-period="month" class="active">חודש</button>
+    <button data-period="year">שנה</button>
+    <button data-period="all">הכל</button>
+  </div>
+  <div class="scope-chips" id="scopeChips">
+    <button class="scope-chip active" data-scope="">הכל</button>
+    <button class="scope-chip" data-scope="Family">משפחה</button>
+    <button class="scope-chip" data-scope="Personal">אישי</button>
+    <button class="scope-chip" data-scope="__untagged">ללא תיוג</button>
+  </div>
+  <div class="card-chips" id="cardChips" style="display:none"></div>
+  <div id="content"></div>
+</div>
+
+<button class="fab" onclick="openAdd()" aria-label="הוספת הוצאה">+</button>
+
+<div class="action-bar" id="actionBar">
+  <button onclick="applyBulkScope('')">ללא</button>
+  <button class="family" onclick="applyBulkScope('Family')">משפחה</button>
+  <button class="personal" onclick="applyBulkScope('Personal')">אישי</button>
+</div>
+
+<!-- EDIT / ADD MODAL -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <button class="modal-cancel" onclick="closeModal()">ביטול</button>
+      <div class="modal-title" id="modalTitle">עריכה</div>
+      <button class="modal-save" onclick="saveModal()">שמור</button>
+    </div>
+    <div class="field">
+      <div class="field-label">סכום</div>
+      <input type="number" inputmode="decimal" step="0.01" id="fAmount" placeholder="0.00">
+    </div>
+    <div class="field">
+      <div class="field-label">בית עסק</div>
+      <input type="text" id="fMerchant" placeholder="איפה">
+    </div>
+    <div class="field">
+      <div class="field-label">סוג</div>
+      <div class="field-segment" id="scopeSegment">
+        <button type="button" data-scope="" class="active">ללא</button>
+        <button type="button" data-scope="Family">משפחה</button>
+        <button type="button" data-scope="Personal">אישי</button>
+      </div>
+    </div>
+    <div class="field">
+      <div class="field-label">תגית</div>
+      <input type="text" id="fSubcategory" placeholder="למשל: ערב זוגי, אימון כדורגל">
+    </div>
+    <div class="field">
+      <div class="field-label">קטגוריה</div>
+      <input type="text" id="fCategory" list="categoryList" placeholder="אחר">
+      <datalist id="categoryList"></datalist>
+    </div>
+    <div class="field">
+      <div class="field-label">כרטיס</div>
+      <input type="text" id="fCard" list="cardList" placeholder="לא חובה">
+      <datalist id="cardList"></datalist>
+    </div>
+    <div class="field">
+      <div class="field-label">תאריך</div>
+      <input type="datetime-local" id="fDate">
+    </div>
+    <button class="delete-btn" id="deleteBtn" onclick="deleteFromModal()" style="display:none">מחיקת הוצאה</button>
+  </div>
+</div>
+
+<!-- IMPORT MODAL -->
+<div class="modal-overlay" id="importModal">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <button class="modal-cancel" onclick="closeImportModal()">ביטול</button>
+      <div class="modal-title">ייבוא עסקאות</div>
+      <button class="modal-save" id="importBtn" onclick="performImport()">ייבוא</button>
+    </div>
+    <div class="import-info" id="importInfo"></div>
+    <div class="field">
+      <div class="field-label">שם כרטיס</div>
+      <input type="text" id="iCard" placeholder="הקלד שם" oninput="recomputeImportPreview()">
+    </div>
+    <div class="field">
+      <div class="field-label">סוג ברירת מחדל</div>
+      <div class="field-segment" id="iScopeSegment">
+        <button type="button" data-scope="" class="active">ללא</button>
+        <button type="button" data-scope="Family">משפחה</button>
+        <button type="button" data-scope="Personal">אישי</button>
+      </div>
+    </div>
+    <div class="section-title" style="margin-right:0">תצוגה מקדימה</div>
+    <div class="card" id="importPreview"></div>
+    <div class="import-summary" id="importSummary"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<button class="undo-toast" id="undoToast" onclick="performUndo()" aria-label="בטל">
+  בטל
+  <div class="undo-progress"></div>
+</button>
+
+<script>
+// ============ CONFIG ============
+const CURRENCY = 'ILS';
+const LOCALE = 'he-IL';
+const SAVE_SHORTCUT_NAME = 'Save Expenses';
+const VIEW_SHORTCUT_NAME = 'View Expenses';
+
+const DEFAULT_CATEGORIES = [
+  'מצרכים', 'מסעדות', 'אוכל ושתייה', 'מזון מהיר',
+  'תחבורה', 'אנרגיה', 'תיירות', 'נסיעות',
+  'קניות', 'אופנה', 'ילדים',
+  'בריאות וכושר', 'רפואה ובריאות', 'טיפוח ויופי',
+  'בידור', 'פנאי בילוי', 'אירועים',
+  'חשבונות ושירותים', 'תקשורת ומחשבים',
+  'ביטוח ופיננסים', 'אחר'
+];
+
+// ============ STATE ============
+let transactions = [];
+let dataLoaded = false;
+let dirty = false;
+let editingId = null;
+let currentPeriod = 'month';
+let currentScope = '';
+let currentCard = '';
+let searchQuery = '';
+
+let pendingImport = null; // { transactions: [...], suggestedCard: '...', fileName: '...' }
+
+// ============ HELPERS ============
+function uuid() {
+  return 'tx-' + Math.random().toString(36).slice(2, 10) + '-' + Date.now().toString(36);
+}
+function escapeHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function fmtMoney(n) {
+  try {
+    return new Intl.NumberFormat(LOCALE, { style: 'currency', currency: CURRENCY }).format(n);
+  } catch (e) { return '₪' + n.toFixed(2); }
+}
+function fmtDate(d) {
+  const now = new Date();
+  if (d.toDateString() === now.toDateString()) {
+    return d.toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit' });
+  }
+  const sameYear = d.getFullYear() === now.getFullYear();
+  return d.toLocaleDateString(LOCALE,
+    sameYear ? { month: 'short', day: 'numeric' } : { month: 'short', day: 'numeric', year: '2-digit' });
+}
+function toDatetimeLocal(d) {
+  const pad = n => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
+       + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+}
+function clean(s) {
+  return String(s || '').replace(/,/g, ' ').replace(/[\r\n]/g, ' ').trim();
+}
+function sameDay(a, b) {
+  return a.getFullYear() === b.getFullYear()
+      && a.getMonth() === b.getMonth()
+      && a.getDate() === b.getDate();
+}
+
+// ============ DATA ============
+// CSV columns: date, amount, merchant, card, category, scope, subcategory
+function parseCSV(text) {
+  if (!text) return [];
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const rows = [];
+  for (const line of lines) {
+    if (line.startsWith('#')) continue;
+    const parts = line.split(',');
+    if (parts.length < 5) continue;
+    const d = new Date(parts[0]);
+    const amt = parseFloat(parts[1]);
+    if (isNaN(d.getTime()) || isNaN(amt)) continue;
+    rows.push({
+      id: uuid(),
+      date: d,
+      amount: amt,
+      merchant: parts[2] || 'לא ידוע',
+      card: parts[3] || '',
+      category: parts[4] || 'אחר',
+      scope: parts[5] || '',
+      subcategory: parts[6] || ''
+    });
+  }
+  return rows.sort((a, b) => b.date - a.date);
+}
+
+function toCSV(txs) {
+  const sorted = [...txs].sort((a, b) => a.date - b.date);
+  return sorted.map(t => [
+    t.date.toISOString(),
+    t.amount.toFixed(2),
+    clean(t.merchant),
+    clean(t.card),
+    clean(t.category),
+    clean(t.scope),
+    clean(t.subcategory)
+  ].join(',')).join('\n') + '\n';
+}
+
+function loadFromHash() {
+  const h = location.hash;
+  if (!h.startsWith('#data=')) return null;
+  try {
+    return parseCSV(decodeURIComponent(h.slice(6)));
+  } catch (e) {
+    console.error('Bad hash data', e);
+    return null;
+  }
+}
+
+// ============ FILTERING ============
+function filterByScope(txs, scope) {
+  if (!scope) return txs;
+  if (scope === '__untagged') return txs.filter(t => !t.scope);
+  return txs.filter(t => t.scope === scope);
+}
+function filterByCard(txs, card) {
+  if (!card) return txs;
+  return txs.filter(t => t.card === card);
+}
+function filterByPeriod(txs, period) {
+  if (period === 'all') return txs.slice();
+  const now = new Date();
+  const cutoff = new Date(now);
+  if (period === 'week') cutoff.setDate(cutoff.getDate() - 7);
+  else if (period === 'month') cutoff.setMonth(cutoff.getMonth() - 1);
+  else if (period === 'year') cutoff.setFullYear(cutoff.getFullYear() - 1);
+  return txs.filter(t => t.date >= cutoff);
+}
+function filterBySearch(txs, q) {
+  if (!q) return txs;
+  const needle = q.toLowerCase();
+  return txs.filter(t =>
+    t.merchant.toLowerCase().includes(needle) ||
+    t.category.toLowerCase().includes(needle) ||
+    t.card.toLowerCase().includes(needle) ||
+    t.subcategory.toLowerCase().includes(needle) ||
+    t.scope.toLowerCase().includes(needle)
+  );
+}
+
+function getAllCards() {
+  const cards = new Set();
+  for (const t of transactions) {
+    if (t.card && t.card.trim()) cards.add(t.card);
+  }
+  return Array.from(cards).sort((a, b) => a.localeCompare(b, 'he'));
+}
+
+function getAllCategories() {
+  const cats = new Set(DEFAULT_CATEGORIES);
+  for (const t of transactions) {
+    if (t.category && t.category.trim()) cats.add(t.category);
+  }
+  return Array.from(cats).sort((a, b) => a.localeCompare(b, 'he'));
+}
+
+// ============ RENDER ============
+const PERIOD_LABELS = {
+  week: '7 הימים האחרונים',
+  month: '30 הימים האחרונים',
+  year: '12 החודשים האחרונים',
+  all: 'כל הזמנים'
+};
+const SCOPE_LABELS = { Family: 'משפחה', Personal: 'אישי' };
+
+function renderCardChips() {
+  const cards = getAllCards();
+  const chipsEl = document.getElementById('cardChips');
+  if (cards.length <= 1) {
+    chipsEl.style.display = 'none';
+    if (currentCard && !cards.includes(currentCard)) currentCard = '';
+    return;
+  }
+  chipsEl.style.display = 'flex';
+  let html = `<button class="card-chip ${!currentCard ? 'active' : ''}" data-card="">הכל</button>`;
+  for (const c of cards) {
+    html += `<button class="card-chip ${currentCard === c ? 'active' : ''}" data-card="${escapeHtml(c)}">${escapeHtml(c)}</button>`;
+  }
+  chipsEl.innerHTML = html;
+}
+
+function renderDatalists() {
+  const catList = document.getElementById('categoryList');
+  catList.innerHTML = getAllCategories().map(c => `<option value="${escapeHtml(c)}">`).join('');
+  const cardList = document.getElementById('cardList');
+  cardList.innerHTML = getAllCards().map(c => `<option value="${escapeHtml(c)}">`).join('');
+}
+
+function render() {
+  const saveBtn = document.getElementById('saveBtn');
+  if (saveBtn) saveBtn.classList.toggle('visible', dirty);
+
+  const content = document.getElementById('content');
+
+  if (!dataLoaded) {
+    content.innerHTML = `
+      <div class="card empty" style="margin-top:32px;padding:36px 24px">
+        <div style="font-size:46px;margin-bottom:12px">💳</div>
+        <div style="font-size:18px;font-weight:600;color:var(--text);margin-bottom:8px">ברוכים הבאים</div>
+        <div style="margin-bottom:22px">כדי לטעון את ההוצאות שלך, הקש על הקיצור <strong>הצגת הוצאות</strong> במסך הבית.</div>
+        <button class="save-btn visible" style="display:inline-block" onclick="launchViewShortcut()">הפעל הצגת הוצאות</button>
+      </div>
+    `;
+    document.querySelector('.fab').style.display = 'none';
+    document.getElementById('periodSegment').style.display = 'none';
+    document.getElementById('scopeChips').style.display = 'none';
+    document.getElementById('cardChips').style.display = 'none';
+    document.querySelector('.search').style.display = 'none';
+    return;
+  }
+
+  renderCardChips();
+  renderDatalists();
+
+  let filtered = filterByScope(transactions, currentScope);
+  filtered = filterByCard(filtered, currentCard);
+  filtered = filterByPeriod(filtered, currentPeriod);
+  filtered = filterBySearch(filtered, searchQuery);
+  filtered.sort((a, b) => b.date - a.date);
+
+  const total = filtered.reduce((s, t) => s + t.amount, 0);
+  const count = filtered.length;
+
+  const byCat = {};
+  for (const t of filtered) byCat[t.category] = (byCat[t.category] || 0) + t.amount;
+  const cats = Object.entries(byCat).sort((a, b) => b[1] - a[1]);
+  const maxCat = cats[0]?.[1] || 1;
+
+  const byCard = {};
+  for (const t of filtered) byCard[t.card || '(ללא כרטיס)'] = (byCard[t.card || '(ללא כרטיס)'] || 0) + t.amount;
+  const cardBreakdown = Object.entries(byCard).sort((a, b) => b[1] - a[1]);
+  const maxCard = cardBreakdown[0]?.[1] || 1;
+
+  const labelParts = [PERIOD_LABELS[currentPeriod]];
+  if (currentScope) labelParts.push(SCOPE_LABELS[currentScope] || currentScope);
+  if (currentCard) labelParts.push(currentCard);
+  if (searchQuery) labelParts.push('מסונן');
+  const totalLabel = labelParts.join(' · ');
+
+  let html = `
+    <div class="total-card">
+      <div class="total-amount">${fmtMoney(total)}</div>
+      <div class="total-label">${escapeHtml(totalLabel)}</div>
+      <div class="total-count">${count} ${count === 1 ? 'עסקה' : 'עסקאות'}</div>
+    </div>
+  `;
+
+  if (count === 0) {
+    html += `<div class="card empty" style="margin-top:24px">${
+      transactions.length === 0
+        ? 'אין עדיין הוצאות.<br>הקש + כדי להוסיף, שלם עם Apple Pay, או ייבא מקובץ.'
+        : 'אין עסקאות התואמות את הסינון.'
+    }</div>`;
+  } else {
+    // By Card section (only if 2+ cards in data, and no card filter active)
+    const allCards = getAllCards();
+    if (allCards.length > 1 && !currentCard && cardBreakdown.length > 1) {
+      html += `<div class="section-title">לפי כרטיס</div><div class="card">`;
+      for (const [name, amt] of cardBreakdown) {
+        const pct = (amt / maxCard) * 100;
+        html += `
+          <div class="card-row">
+            <div class="card-header">
+              <span class="card-name">${escapeHtml(name)}</span>
+              <span class="card-amount">${fmtMoney(amt)}</span>
+            </div>
+            <div class="bar"><div class="bar-fill" style="width:${pct}%"></div></div>
+          </div>`;
+      }
+      html += `</div>`;
+    }
+
+    html += `<div class="section-title">לפי קטגוריה</div><div class="card">`;
+    for (const [name, amt] of cats) {
+      const pct = (amt / maxCat) * 100;
+      html += `
+        <div class="cat-row">
+          <div class="cat-header">
+            <span class="cat-name">${escapeHtml(name)}</span>
+            <span class="cat-amount">${fmtMoney(amt)}</span>
+          </div>
+          <div class="bar"><div class="bar-fill" style="width:${pct}%"></div></div>
+        </div>`;
+    }
+    html += `</div>`;
+
+    html += `<div class="section-title">עסקאות</div><div class="card" id="txList">`;
+    const display = filtered.slice(0, 250);
+    for (const t of display) {
+      const metaItems = [];
+      if (t.subcategory) {
+        metaItems.push(`<span class="tx-tag">${escapeHtml(t.subcategory)}</span>`);
+        metaItems.push(escapeHtml(t.category));
+        metaItems.push(escapeHtml(fmtDate(t.date)));
+      } else {
+        metaItems.push(escapeHtml(t.category));
+        if (t.card) metaItems.push(escapeHtml(t.card));
+        metaItems.push(escapeHtml(fmtDate(t.date)));
+      }
+      const famLabel = t.scope === 'Family' ? 'הסר תיוג' : 'משפחה';
+      const perLabel = t.scope === 'Personal' ? 'הסר תיוג' : 'אישי';
+      const selClass = selectedIds.has(t.id) ? ' selected' : '';
+      const checkbox = selectMode ? '<div class="tx-checkbox"></div>' : '';
+      html += `
+        <div class="tx-swipe-wrap" data-id="${t.id}">
+          <div class="swipe-bg swipe-bg-family">${famLabel}</div>
+          <div class="swipe-bg swipe-bg-personal">${perLabel}</div>
+          <div class="tx-row${selClass}" data-id="${t.id}" data-scope="${escapeHtml(t.scope)}">
+            ${checkbox}
+            <div class="tx-info">
+              <div class="tx-merchant">${escapeHtml(t.merchant)}</div>
+              <div class="tx-meta">${metaItems.join(' · ')}</div>
+            </div>
+            <div class="tx-amount">${fmtMoney(t.amount)}</div>
+            <div class="tx-chevron">‹</div>
+          </div>
+        </div>`;
+    }
+    html += `</div>`;
+    if (filtered.length > 250) {
+      html += `<div class="empty">מציג 250 מתוך ${filtered.length}. צמצם את התקופה או החיפוש כדי לראות עוד.</div>`;
+    }
+  }
+
+  content.innerHTML = html;
+  document.querySelectorAll('.tx-swipe-wrap').forEach(wrap => {
+    if (!selectMode) attachSwipe(wrap);
+    wrap.querySelector('.tx-row').addEventListener('click', () => {
+      if (Date.now() - lastSwipeCommittedAt < 500) return;
+      if (selectMode) {
+        toggleRowSelection(wrap.dataset.id);
+      } else {
+        openEdit(wrap.dataset.id);
+      }
+    });
+  });
+}
+
+// ============ EDIT / ADD MODAL ============
+function setScopeButton(scope) {
+  document.querySelectorAll('#scopeSegment button').forEach(b => {
+    b.classList.toggle('active', b.dataset.scope === scope);
+  });
+}
+
+function openEdit(id) {
+  const t = transactions.find(x => x.id === id);
+  if (!t) return;
+  editingId = id;
+  document.getElementById('modalTitle').textContent = 'עריכת הוצאה';
+  document.getElementById('fAmount').value = t.amount.toFixed(2);
+  document.getElementById('fMerchant').value = t.merchant;
+  document.getElementById('fCard').value = t.card;
+  document.getElementById('fCategory').value = t.category;
+  document.getElementById('fSubcategory').value = t.subcategory;
+  setScopeButton(t.scope || '');
+  document.getElementById('fDate').value = toDatetimeLocal(t.date);
+  document.getElementById('deleteBtn').style.display = 'block';
+  document.getElementById('modal').classList.add('visible');
+}
+
+function openAdd() {
+  editingId = null;
+  document.getElementById('modalTitle').textContent = 'הוספת הוצאה';
+  document.getElementById('fAmount').value = '';
+  document.getElementById('fMerchant').value = '';
+  document.getElementById('fCard').value = currentCard || '';
+  document.getElementById('fCategory').value = 'אחר';
+  document.getElementById('fSubcategory').value = '';
+  setScopeButton(currentScope || '');
+  document.getElementById('fDate').value = toDatetimeLocal(new Date());
+  document.getElementById('deleteBtn').style.display = 'none';
+  document.getElementById('modal').classList.add('visible');
+  setTimeout(() => document.getElementById('fAmount').focus(), 250);
+}
+
+function closeModal() {
+  document.getElementById('modal').classList.remove('visible');
+  editingId = null;
+}
+
+function saveModal() {
+  const amount = parseFloat(document.getElementById('fAmount').value);
+  const merchant = document.getElementById('fMerchant').value.trim();
+  const card = document.getElementById('fCard').value.trim();
+  const category = (document.getElementById('fCategory').value.trim() || 'אחר');
+  const subcategory = document.getElementById('fSubcategory').value.trim();
+  const scope = document.querySelector('#scopeSegment button.active')?.dataset.scope || '';
+  const dateStr = document.getElementById('fDate').value;
+  if (isNaN(amount) || amount <= 0 || !merchant || !dateStr) {
+    showToast('צריך סכום, בית עסק ותאריך');
+    return;
+  }
+  const date = new Date(dateStr);
+  if (editingId) {
+    const t = transactions.find(x => x.id === editingId);
+    Object.assign(t, { amount, merchant, card, category, subcategory, scope, date });
+  } else {
+    transactions.push({ id: uuid(), amount, merchant, card, category, subcategory, scope, date });
+  }
+  dirty = true;
+  closeModal();
+  render();
+}
+
+function deleteFromModal() {
+  if (!editingId) return;
+  if (!confirm('למחוק את ההוצאה הזו?')) return;
+  transactions = transactions.filter(x => x.id !== editingId);
+  dirty = true;
+  closeModal();
+  render();
+}
+
+// ============ IMPORT ============
+function startImport() {
+  if (!dataLoaded) {
+    showToast('טען נתונים קודם דרך הקיצור');
+    return;
+  }
+  document.getElementById('fileInput').click();
+}
+
+document.getElementById('fileInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    const ext = file.name.toLowerCase().split('.').pop();
+    let parsed;
+    if (ext === 'csv') {
+      const text = await file.text();
+      parsed = parseImportCSV(text);
+    } else {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(new Uint8Array(buf), { type: 'array', cellDates: true });
+      parsed = parseImportXLSX(wb);
+    }
+    if (parsed.transactions.length === 0) {
+      showToast('לא נמצאו עסקאות בקובץ');
+      return;
+    }
+    pendingImport = { ...parsed, fileName: file.name };
+    showImportModal();
+  } catch (err) {
+    console.error(err);
+    showToast('שגיאה: ' + err.message);
+  }
+  e.target.value = '';
+});
+
+function normaliseHeader(s) {
+  return String(s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+function parseImportXLSX(wb) {
+  const sheetName = wb.SheetNames[0];
+  const sheet = wb.Sheets[sheetName];
+  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+
+  // Find the header row by looking for both תאריך and סכום in the same row
+  let headerIdx = -1;
+  for (let i = 0; i < Math.min(20, rows.length); i++) {
+    const cells = rows[i].map(normaliseHeader);
+    if (cells.some(c => c.includes('תאריך')) && cells.some(c => c.includes('סכום'))) {
+      headerIdx = i;
+      break;
+    }
+  }
+  if (headerIdx < 0) throw new Error('לא נמצאה שורת כותרת');
+
+  const header = rows[headerIdx].map(normaliseHeader);
+  const dateIdx = header.findIndex(c => c.includes('תאריך'));
+  const merchantIdx = header.findIndex(c => c.includes('בית עסק') || c.includes('שם בית') || c.includes('תיאור'));
+  // Prefer "סכום חיוב" (actual NIS charged) over "סכום עסקה" (original/foreign amount)
+  const chargeIdx = header.findIndex(c => c.includes('סכום חיוב') || c.includes('חיוב'));
+  const txAmtIdx = header.findIndex(c => c.includes('סכום עסקה') || c === 'סכום' || c.includes('סכום'));
+  const amountIdx = chargeIdx >= 0 ? chargeIdx : txAmtIdx;
+  const categoryIdx = header.findIndex(c => c.includes('ענף') || c.includes('קטגוריה'));
+
+  // Detect card name from pre-header rows
+  let suggestedCard = '';
+  for (let i = 0; i < headerIdx; i++) {
+    const text = rows[i].join(' ');
+    // Look for "המסתיים ב-XXXX" or just 4 digits with mastercard/visa hints
+    const endMatch = text.match(/המסתיים\s*ב[-־]?\s*(\d{4})/);
+    if (endMatch) {
+      let prefix = 'כרטיס';
+      if (/מאסטרקארד|mastercard/i.test(text)) prefix = 'מאסטרקארד';
+      else if (/ויזה|visa/i.test(text)) prefix = 'ויזה';
+      else if (/ישראכרט|isracard/i.test(text)) prefix = 'ישראכרט';
+      else if (/אמריקן|american|amex/i.test(text)) prefix = 'אמריקן אקספרס';
+      suggestedCard = prefix + ' ' + endMatch[1];
+      break;
+    }
+  }
+  if (!suggestedCard) suggestedCard = sheetName.replace(/[^\u0590-\u05FF\w\s-]/g, '').trim();
+
+  // Parse data rows
+  const out = [];
+  for (let i = headerIdx + 1; i < rows.length; i++) {
+    const r = rows[i];
+    if (!r || r.length === 0) continue;
+    const rawDate = r[dateIdx];
+    const rawAmt = r[amountIdx];
+    if (rawDate === '' || rawDate == null || rawAmt === '' || rawAmt == null) continue;
+
+    let date;
+    if (rawDate instanceof Date) {
+      date = rawDate;
+    } else if (typeof rawDate === 'number') {
+      // Excel serial: days since 1899-12-30
+      date = new Date(Math.round((rawDate - 25569) * 86400 * 1000));
+    } else {
+      const s = String(rawDate).trim();
+      // Try DD/MM/YYYY (Israeli) first
+      const dmy = s.match(/^(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{2,4})$/);
+      if (dmy) {
+        const yr = dmy[3].length === 2 ? 2000 + parseInt(dmy[3], 10) : parseInt(dmy[3], 10);
+        date = new Date(yr, parseInt(dmy[2], 10) - 1, parseInt(dmy[1], 10));
+      } else {
+        date = new Date(s);
+      }
+    }
+    if (!date || isNaN(date.getTime())) continue;
+
+    const amt = typeof rawAmt === 'number'
+      ? rawAmt
+      : parseFloat(String(rawAmt).replace(/[^\d.\-]/g, ''));
+    if (isNaN(amt) || amt === 0) continue;
+
+    const merchant = String(r[merchantIdx] || '').trim() || 'לא ידוע';
+    const category = String(r[categoryIdx] || '').trim() || 'אחר';
+
+    out.push({
+      date,
+      amount: Math.abs(amt),
+      merchant,
+      category,
+      card: '', // filled in modal
+      scope: '',
+      subcategory: ''
+    });
+  }
+
+  return { transactions: out, suggestedCard };
+}
+
+function parseImportCSV(text) {
+  // Detect if this is OUR CSV (our 7-column format with ISO dates), in which case import as-is
+  const firstLine = text.split(/\r?\n/).find(l => l.trim() && !l.startsWith('#'));
+  if (firstLine && /^\d{4}-\d{2}-\d{2}T/.test(firstLine)) {
+    // Our own format — import directly
+    const rows = parseCSV(text).map(r => ({
+      date: r.date, amount: r.amount,
+      merchant: r.merchant, card: r.card,
+      category: r.category, scope: r.scope, subcategory: r.subcategory
+    }));
+    return { transactions: rows, suggestedCard: '' };
+  }
+  // Otherwise treat as Israeli-format CSV with Hebrew headers
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  if (lines.length < 2) throw new Error('הקובץ ריק');
+
+  let headerIdx = -1;
+  for (let i = 0; i < Math.min(10, lines.length); i++) {
+    const low = lines[i].toLowerCase();
+    if (low.includes('תאריך') && low.includes('סכום')) { headerIdx = i; break; }
+  }
+  if (headerIdx < 0) throw new Error('לא נמצאה שורת כותרת');
+
+  const header = lines[headerIdx].split(',').map(normaliseHeader);
+  const dateIdx = header.findIndex(c => c.includes('תאריך'));
+  const merchantIdx = header.findIndex(c => c.includes('בית עסק') || c.includes('שם') || c.includes('תיאור'));
+  const chargeIdx = header.findIndex(c => c.includes('סכום חיוב') || c.includes('חיוב'));
+  const txAmtIdx = header.findIndex(c => c.includes('סכום עסקה') || c.includes('סכום'));
+  const amountIdx = chargeIdx >= 0 ? chargeIdx : txAmtIdx;
+  const categoryIdx = header.findIndex(c => c.includes('ענף') || c.includes('קטגוריה'));
+
+  const out = [];
+  for (let i = headerIdx + 1; i < lines.length; i++) {
+    const parts = lines[i].split(',');
+    if (parts.length < 2) continue;
+    const rawDate = parts[dateIdx];
+    const rawAmt = parts[amountIdx];
+    if (!rawDate || !rawAmt) continue;
+
+    let date;
+    const dmy = String(rawDate).match(/^(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{2,4})/);
+    if (dmy) {
+      const yr = dmy[3].length === 2 ? 2000 + parseInt(dmy[3], 10) : parseInt(dmy[3], 10);
+      date = new Date(yr, parseInt(dmy[2], 10) - 1, parseInt(dmy[1], 10));
+    } else {
+      date = new Date(rawDate);
+    }
+    if (!date || isNaN(date.getTime())) continue;
+
+    const amt = parseFloat(String(rawAmt).replace(/[^\d.\-]/g, ''));
+    if (isNaN(amt) || amt === 0) continue;
+
+    out.push({
+      date,
+      amount: Math.abs(amt),
+      merchant: (parts[merchantIdx] || '').trim() || 'לא ידוע',
+      category: (parts[categoryIdx] || '').trim() || 'אחר',
+      card: '', scope: '', subcategory: ''
+    });
+  }
+  return { transactions: out, suggestedCard: '' };
+}
+
+function showImportModal() {
+  const info = document.getElementById('importInfo');
+  info.innerHTML = `
+    <div><strong>קובץ:</strong> ${escapeHtml(pendingImport.fileName)}</div>
+    <div><strong>זוהו:</strong> ${pendingImport.transactions.length} עסקאות</div>
+  `;
+  document.getElementById('iCard').value = pendingImport.suggestedCard || '';
+  document.querySelectorAll('#iScopeSegment button').forEach(b => {
+    b.classList.toggle('active', b.dataset.scope === '');
+  });
+  recomputeImportPreview();
+  document.getElementById('importModal').classList.add('visible');
+}
+
+function closeImportModal() {
+  document.getElementById('importModal').classList.remove('visible');
+  pendingImport = null;
+}
+
+function recomputeImportPreview() {
+  if (!pendingImport) return;
+  const card = document.getElementById('iCard').value.trim();
+
+  // Dedup against existing transactions (same card)
+  const existingPool = transactions
+    .filter(t => t.card === card)
+    .map(t => ({ date: t.date, amount: t.amount, merchant: t.merchant.toLowerCase(), matched: false }));
+
+  const results = [];
+  for (const imp of pendingImport.transactions) {
+    const idx = existingPool.findIndex(e =>
+      !e.matched &&
+      Math.abs(e.amount - imp.amount) < 0.005 &&
+      e.merchant === imp.merchant.toLowerCase() &&
+      sameDay(e.date, imp.date)
+    );
+    if (idx >= 0) {
+      existingPool[idx].matched = true;
+      results.push({ tx: imp, dup: true });
+    } else {
+      results.push({ tx: imp, dup: false });
+    }
+  }
+
+  const fresh = results.filter(r => !r.dup).length;
+  const dups = results.filter(r => r.dup).length;
+
+  // Render preview — show up to 6 of the freshest entries
+  const sorted = [...results].sort((a, b) => b.tx.date - a.tx.date);
+  const show = sorted.slice(0, 6);
+  let html = '';
+  for (const r of show) {
+    const cls = r.dup ? 'preview-row skipped' : 'preview-row';
+    html += `
+      <div class="${cls}">
+        <div class="preview-info">
+          <div class="preview-merchant">${escapeHtml(r.tx.merchant)}</div>
+          <div class="preview-meta">${escapeHtml(r.tx.category)} · ${escapeHtml(fmtDate(r.tx.date))}</div>
+        </div>
+        <div class="preview-amount">${fmtMoney(r.tx.amount)}</div>
+      </div>`;
+  }
+  if (results.length > 6) {
+    html += `<div class="preview-row" style="justify-content:center;color:var(--text-secondary)">+ עוד ${results.length - 6}</div>`;
+  }
+  document.getElementById('importPreview').innerHTML = html;
+
+  document.getElementById('importSummary').innerHTML = `
+    <span class="count">${fresh}</span> עסקאות חדשות
+    ${dups > 0 ? `· <span class="dup">${dups} כפילויות יידלגו</span>` : ''}
+  `;
+
+  pendingImport._results = results;
+  document.getElementById('importBtn').disabled = fresh === 0;
+}
+
+function performImport() {
+  if (!pendingImport || !pendingImport._results) return;
+  const card = document.getElementById('iCard').value.trim();
+  const scope = document.querySelector('#iScopeSegment button.active')?.dataset.scope || '';
+  const fresh = pendingImport._results.filter(r => !r.dup).map(r => ({
+    id: uuid(),
+    date: r.tx.date,
+    amount: r.tx.amount,
+    merchant: r.tx.merchant,
+    card,
+    category: r.tx.category,
+    scope,
+    subcategory: ''
+  }));
+  if (fresh.length === 0) {
+    closeImportModal();
+    return;
+  }
+  transactions = transactions.concat(fresh);
+  dirty = true;
+  closeImportModal();
+  render();
+  showToast(`יובאו ${fresh.length} עסקאות`);
+}
+
+// ============ SAVE BACK ============
+async function saveChanges() {
+  if (!dirty || !dataLoaded) return;
+  const csv = toCSV(transactions);
+  try {
+    await navigator.clipboard.writeText(csv);
+  } catch (e) {
+    showToast('כתיבה ללוח חסומה. נסה שוב.');
+    return;
+  }
+  window.location.href = 'shortcuts://run-shortcut?name=' + encodeURIComponent(SAVE_SHORTCUT_NAME);
+  dirty = false;
+  setTimeout(() => { render(); showToast('נשמר'); }, 300);
+}
+
+function launchViewShortcut() {
+  window.location.href = 'shortcuts://run-shortcut?name=' + encodeURIComponent(VIEW_SHORTCUT_NAME);
+}
+
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('visible');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => el.classList.remove('visible'), 2400);
+}
+
+// ============ SELECT MODE / BULK TAG ============
+let selectMode = false;
+let selectedIds = new Set();
+
+function enterSelectMode() {
+  if (!dataLoaded || transactions.length === 0) return;
+  selectMode = true;
+  selectedIds.clear();
+  document.body.classList.add('select-mode');
+  updateHeader();
+  updateActionBar();
+  render();
+}
+
+function exitSelectMode() {
+  selectMode = false;
+  selectedIds.clear();
+  document.body.classList.remove('select-mode');
+  updateHeader();
+  updateActionBar();
+  render();
+}
+
+function updateHeader() {
+  const titleEl = document.getElementById('headerTitle');
+  const actionsEl = document.getElementById('headerActions');
+  if (selectMode) {
+    const n = selectedIds.size;
+    titleEl.innerHTML = `<button class="select-cancel" onclick="exitSelectMode()">ביטול</button><span class="select-count">${n} נבחרו</span>`;
+    titleEl.style.display = 'flex';
+    titleEl.style.alignItems = 'center';
+    actionsEl.innerHTML = `<button class="select-all" onclick="toggleSelectAll()">${visibleAllSelected() ? 'נקה' : 'בחר הכל'}</button>`;
+  } else {
+    titleEl.textContent = 'הוצאות';
+    titleEl.style.display = '';
+    titleEl.style.alignItems = '';
+    actionsEl.innerHTML = `
+      <button class="icon-btn" onclick="enterSelectMode()" aria-label="בחירה">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+      </button>
+      <button class="icon-btn" onclick="startImport()" aria-label="ייבוא">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      </button>
+      <button class="save-btn ${dirty ? 'visible' : ''}" id="saveBtn" onclick="saveChanges()">שמירה</button>
+    `;
+  }
+}
+
+function updateActionBar() {
+  const bar = document.getElementById('actionBar');
+  bar.classList.toggle('visible', selectMode);
+  bar.classList.toggle('disabled', selectedIds.size === 0);
+}
+
+function toggleRowSelection(id) {
+  if (selectedIds.has(id)) selectedIds.delete(id);
+  else selectedIds.add(id);
+  updateHeader();
+  updateActionBar();
+  // Update just the row's class without full re-render (cheap)
+  document.querySelectorAll(`.tx-row[data-id="${id}"]`).forEach(el => {
+    el.classList.toggle('selected', selectedIds.has(id));
+  });
+}
+
+function getVisibleTransactionIds() {
+  // The same filter chain render() uses
+  let filtered = filterByScope(transactions, currentScope);
+  filtered = filterByCard(filtered, currentCard);
+  filtered = filterByPeriod(filtered, currentPeriod);
+  filtered = filterBySearch(filtered, searchQuery);
+  return filtered.map(t => t.id);
+}
+
+function visibleAllSelected() {
+  const visible = getVisibleTransactionIds();
+  if (visible.length === 0) return false;
+  return visible.every(id => selectedIds.has(id));
+}
+
+function toggleSelectAll() {
+  const visible = getVisibleTransactionIds();
+  if (visibleAllSelected()) {
+    visible.forEach(id => selectedIds.delete(id));
+  } else {
+    visible.forEach(id => selectedIds.add(id));
+  }
+  updateHeader();
+  updateActionBar();
+  render();
+}
+
+function applyBulkScope(newScope) {
+  if (selectedIds.size === 0) return;
+  const ids = Array.from(selectedIds);
+  // Capture old scopes for undo
+  const oldScopes = {};
+  let changedCount = 0;
+  for (const id of ids) {
+    const t = transactions.find(x => x.id === id);
+    if (!t) continue;
+    if (t.scope !== newScope) {
+      oldScopes[id] = t.scope;
+      t.scope = newScope;
+      changedCount++;
+    }
+  }
+  if (changedCount === 0) {
+    exitSelectMode();
+    showToast('אין שינויים');
+    return;
+  }
+  dirty = true;
+  const scopeLabel = newScope === '' ? 'ללא תיוג' : (newScope === 'Family' ? 'משפחה' : 'אישי');
+  setupUndo({
+    label: `סומנו ${changedCount} עסקאות כ${scopeLabel}`,
+    apply: () => {
+      for (const id in oldScopes) {
+        const t = transactions.find(x => x.id === id);
+        if (t) t.scope = oldScopes[id];
+      }
+    }
+  });
+  ensureShakeListener();
+  exitSelectMode();
+}
+
+// ============ SWIPE-TO-TAG ============
+let lastSwipeCommittedAt = 0;
+
+function attachSwipe(wrap) {
+  const row = wrap.querySelector('.tx-row');
+  if (!row) return;
+  const txId = wrap.dataset.id;
+  let startX = 0, startY = 0, dx = 0;
+  let direction = 0; // -1 left, 1 right, 0 none
+  let isSwiping = false;
+  let scrollLock = false;
+  const threshold = 70;
+  const maxDrag = 160;
+
+  function reset() {
+    wrap.classList.remove('swiping', 'show-family', 'show-personal', 'ready');
+    row.style.transform = '';
+    dx = 0; direction = 0; isSwiping = false; scrollLock = false;
+  }
+
+  row.addEventListener('touchstart', e => {
+    if (e.touches.length !== 1) return;
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+    dx = 0;
+    isSwiping = false;
+    scrollLock = false;
+    wrap.classList.add('swiping');
+  }, { passive: true });
+
+  row.addEventListener('touchmove', e => {
+    if (e.touches.length !== 1) return;
+    const cdx = e.touches[0].clientX - startX;
+    const cdy = e.touches[0].clientY - startY;
+    if (!isSwiping && !scrollLock) {
+      // Decide axis on first significant motion
+      if (Math.abs(cdy) > 10 && Math.abs(cdy) > Math.abs(cdx)) {
+        scrollLock = true; // user is scrolling vertically — give up
+        wrap.classList.remove('swiping');
+        return;
+      }
+      if (Math.abs(cdx) > 10) {
+        isSwiping = true;
+      } else {
+        return;
+      }
+    }
+    if (scrollLock) return;
+    dx = Math.max(-maxDrag, Math.min(maxDrag, cdx));
+    row.style.transform = `translateX(${dx}px)`;
+    // dx < 0 = swipe left → row moves left → reveals RIGHT side (Family)
+    // dx > 0 = swipe right → row moves right → reveals LEFT side (Personal)
+    wrap.classList.toggle('show-family', dx < -8);
+    wrap.classList.toggle('show-personal', dx > 8);
+    wrap.classList.toggle('ready', Math.abs(dx) > threshold);
+    direction = dx < 0 ? -1 : (dx > 0 ? 1 : 0);
+  }, { passive: true });
+
+  row.addEventListener('touchend', () => {
+    if (scrollLock || !isSwiping) {
+      reset();
+      return;
+    }
+    if (Math.abs(dx) > threshold) {
+      // Commit the swipe
+      lastSwipeCommittedAt = Date.now();
+      const targetScope = direction < 0 ? 'Family' : 'Personal';
+      wrap.classList.remove('swiping', 'ready');
+      wrap.classList.add(direction < 0 ? 'commit-left' : 'commit-right');
+      // Wait for the slide-off animation, then commit + re-render
+      setTimeout(() => applyScopeSwipe(txId, targetScope), 220);
+    } else {
+      // Snap back
+      wrap.classList.remove('swiping');
+      row.style.transform = '';
+      wrap.classList.remove('show-family', 'show-personal', 'ready');
+    }
+  }, { passive: true });
+
+  row.addEventListener('touchcancel', reset, { passive: true });
+}
+
+function applyScopeSwipe(txId, newScope) {
+  const t = transactions.find(x => x.id === txId);
+  if (!t) return;
+  const oldScope = t.scope;
+  // Toggle: if already this scope, clear it (so "remove tag" is just another swipe)
+  const finalScope = (oldScope === newScope) ? '' : newScope;
+  if (oldScope === finalScope) {
+    render(); // no-op safety: just reset the visual
+    return;
+  }
+  t.scope = finalScope;
+  dirty = true;
+
+  // Build the undo state
+  setupUndo({
+    label: finalScope === '' ? `הוסר התיוג מ-${t.merchant}` :
+           (finalScope === 'Family' ? `סומן כמשפחה: ${t.merchant}` : `סומן כאישי: ${t.merchant}`),
+    apply: () => { const tx = transactions.find(x => x.id === txId); if (tx) tx.scope = oldScope; }
+  });
+
+  // Kick off shake-detect permission flow on first commit (one-time)
+  ensureShakeListener();
+
+  render();
+}
+
+// ============ UNDO ============
+let pendingUndo = null; // { apply, timeoutId }
+
+function setupUndo({ label, apply }) {
+  // Replace any in-flight undo with the new one
+  if (pendingUndo) clearTimeout(pendingUndo.timeoutId);
+  const toast = document.getElementById('undoToast');
+  toast.setAttribute('aria-label', label + ' — הקש כדי לבטל');
+  // Re-trigger the CSS countdown animation by re-inserting the progress bar
+  const prog = toast.querySelector('.undo-progress');
+  prog.style.animation = 'none';
+  prog.offsetHeight; // reflow
+  prog.style.animation = '';
+  toast.classList.add('visible');
+
+  pendingUndo = {
+    apply,
+    timeoutId: setTimeout(() => {
+      pendingUndo = null;
+      toast.classList.remove('visible');
+    }, 3000)
+  };
+}
+
+function performUndo() {
+  if (!pendingUndo) return;
+  pendingUndo.apply();
+  clearTimeout(pendingUndo.timeoutId);
+  pendingUndo = null;
+  document.getElementById('undoToast').classList.remove('visible');
+  render();
+  showToast('בוטל');
+}
+
+// ============ SHAKE TO UNDO ============
+let shakeListenerActive = false;
+let shakePermissionAsked = false;
+let shakeBuffer = [];
+let lastShakeUndoAt = 0;
+
+function ensureShakeListener() {
+  if (shakeListenerActive || shakePermissionAsked) return;
+  if (typeof DeviceMotionEvent === 'undefined') return;
+  shakePermissionAsked = true;
+  const start = () => {
+    window.addEventListener('devicemotion', handleMotion);
+    shakeListenerActive = true;
+  };
+  if (typeof DeviceMotionEvent.requestPermission === 'function') {
+    // iOS 13+ requires explicit permission, requested from a user gesture
+    DeviceMotionEvent.requestPermission()
+      .then(state => { if (state === 'granted') start(); })
+      .catch(() => {}); // user declined or browser doesn't support — silently skip
+  } else {
+    start();
+  }
+}
+
+function handleMotion(e) {
+  if (!pendingUndo) return; // only watch during undo window
+  const a = e.accelerationIncludingGravity;
+  if (!a) return;
+  const mag = Math.sqrt((a.x||0)**2 + (a.y||0)**2 + (a.z||0)**2);
+  // Resting gravity ≈ 9.8. A definitive shake spikes well above that.
+  if (mag > 22) {
+    const now = Date.now();
+    shakeBuffer.push(now);
+    shakeBuffer = shakeBuffer.filter(t => now - t < 900);
+    if (shakeBuffer.length >= 3 && now - lastShakeUndoAt > 1500) {
+      lastShakeUndoAt = now;
+      shakeBuffer = [];
+      performUndo();
+    }
+  }
+}
+
+// ============ EVENTS ============
+document.getElementById('periodSegment').addEventListener('click', e => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  document.querySelectorAll('#periodSegment button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  currentPeriod = btn.dataset.period;
+  render();
+});
+
+document.getElementById('scopeChips').addEventListener('click', e => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  document.querySelectorAll('#scopeChips button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  currentScope = btn.dataset.scope;
+  render();
+});
+
+document.getElementById('cardChips').addEventListener('click', e => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  document.querySelectorAll('#cardChips button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  currentCard = btn.dataset.card;
+  render();
+});
+
+document.getElementById('scopeSegment').addEventListener('click', e => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  document.querySelectorAll('#scopeSegment button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+});
+
+document.getElementById('iScopeSegment').addEventListener('click', e => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  document.querySelectorAll('#iScopeSegment button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+});
+
+document.getElementById('searchInput').addEventListener('input', e => {
+  searchQuery = e.target.value;
+  render();
+});
+
+document.getElementById('modal').addEventListener('click', e => {
+  if (e.target.id === 'modal') closeModal();
+});
+
+document.getElementById('importModal').addEventListener('click', e => {
+  if (e.target.id === 'importModal') closeImportModal();
+});
+
+// ============ INIT ============
+const loaded = loadFromHash();
+if (loaded !== null) {
+  transactions = loaded;
+  dataLoaded = true;
+}
+render();
+</script>
+</body>
+</html>
