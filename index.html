@@ -592,7 +592,7 @@ body {
     </div>
     <div class="field">
       <div class="field-label">קטגוריה</div>
-      <input type="text" id="fCategory" list="categoryList" placeholder="אחר">
+      <input type="text" id="fCategory" list="categoryList" placeholder="לא חובה — תתעדכן אוטומטית מדפי חיוב">
       <datalist id="categoryList"></datalist>
     </div>
     <div class="field">
@@ -726,7 +726,7 @@ function parseCSV(text) {
       amount: amt,
       merchant: parts[2] || 'לא ידוע',
       card: parts[3] || '',
-      category: parts[4] || 'אחר',
+      category: parts[4] || '',
       scope: parts[5] || '',
       subcategory: parts[6] || ''
     });
@@ -873,7 +873,10 @@ function render() {
   const count = filtered.length;
 
   const byCat = {};
-  for (const t of filtered) byCat[t.category] = (byCat[t.category] || 0) + t.amount;
+  for (const t of filtered) {
+    const k = t.category || 'ללא קטגוריה';
+    byCat[k] = (byCat[k] || 0) + t.amount;
+  }
   const cats = Object.entries(byCat).sort((a, b) => b[1] - a[1]);
   const maxCat = cats[0]?.[1] || 1;
 
@@ -939,12 +942,13 @@ function render() {
     const display = filtered.slice(0, 250);
     for (const t of display) {
       const metaItems = [];
+      const catLabel = t.category || 'ללא קטגוריה';
       if (t.subcategory) {
         metaItems.push(`<span class="tx-tag">${escapeHtml(t.subcategory)}</span>`);
-        metaItems.push(escapeHtml(t.category));
+        metaItems.push(escapeHtml(catLabel));
         metaItems.push(escapeHtml(fmtDate(t.date)));
       } else {
-        metaItems.push(escapeHtml(t.category));
+        metaItems.push(escapeHtml(catLabel));
         if (t.card) metaItems.push(escapeHtml(t.card));
         metaItems.push(escapeHtml(fmtDate(t.date)));
       }
@@ -1016,7 +1020,7 @@ function openAdd() {
   document.getElementById('fAmount').value = '';
   document.getElementById('fMerchant').value = '';
   document.getElementById('fCard').value = currentCard || '';
-  document.getElementById('fCategory').value = 'אחר';
+  document.getElementById('fCategory').value = '';
   document.getElementById('fSubcategory').value = '';
   setScopeButton(currentScope || '');
   document.getElementById('fDate').value = toDatetimeLocal(new Date());
@@ -1034,7 +1038,7 @@ function saveModal() {
   const amount = parseFloat(document.getElementById('fAmount').value);
   const merchant = document.getElementById('fMerchant').value.trim();
   const card = document.getElementById('fCard').value.trim();
-  const category = (document.getElementById('fCategory').value.trim() || 'אחר');
+  const category = document.getElementById('fCategory').value.trim();
   const subcategory = document.getElementById('fSubcategory').value.trim();
   const scope = document.querySelector('#scopeSegment button.active')?.dataset.scope || '';
   const dateStr = document.getElementById('fDate').value;
@@ -1354,10 +1358,37 @@ function performImport() {
     return;
   }
   transactions = transactions.concat(fresh);
+  // Backfill empty categories on existing rows from any merchant match (incl. the newly imported ones)
+  const backfilled = backfillCategories();
   dirty = true;
   closeImportModal();
   render();
-  showToast(`יובאו ${fresh.length} עסקאות`);
+  const msg = backfilled > 0
+    ? `יובאו ${fresh.length} עסקאות · עודכנו ${backfilled} קטגוריות`
+    : `יובאו ${fresh.length} עסקאות`;
+  showToast(msg);
+}
+
+// Backfill empty-category rows from any other row with the same merchant
+// that does have a category. Returns the number of rows updated.
+function backfillCategories() {
+  const merchantToCategory = new Map();
+  for (const t of transactions) {
+    if (t.category && t.category.trim() && !merchantToCategory.has(t.merchant)) {
+      merchantToCategory.set(t.merchant, t.category);
+    }
+  }
+  let updated = 0;
+  for (const t of transactions) {
+    if (!t.category || !t.category.trim()) {
+      const found = merchantToCategory.get(t.merchant);
+      if (found) {
+        t.category = found;
+        updated++;
+      }
+    }
+  }
+  return updated;
 }
 
 // ============ SAVE BACK ============
@@ -1758,6 +1789,14 @@ const loaded = loadFromHash();
 if (loaded !== null) {
   transactions = loaded;
   dataLoaded = true;
+  // View-time backfill: any blank-category row whose merchant is known
+  // elsewhere in history gets auto-filled. Surfaces the Save button so
+  // the change persists when the user taps שמירה.
+  const updated = backfillCategories();
+  if (updated > 0) {
+    dirty = true;
+    showToast(`מולאו ${updated} קטגוריות אוטומטית`);
+  }
 }
 render();
 </script>
