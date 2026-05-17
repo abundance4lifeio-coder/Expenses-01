@@ -421,6 +421,7 @@ body {
 .modal-overlay.visible { display: flex; }
 /* Nested pickers opened from within other modals must layer on top */
 #actionSheet, #catPicker { z-index: 30; }
+#confirmModal { z-index: 40; }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
 
@@ -654,6 +655,58 @@ body {
   cursor: pointer;
 }
 
+.select-delete {
+  background: none; border: none;
+  color: var(--danger); font-size: 15px;
+  font-weight: 600;
+  font-family: inherit; padding: 4px 10px;
+  cursor: pointer;
+  margin-inline-end: 12px;
+  transition: opacity 0.15s;
+}
+.select-delete:disabled { opacity: 0.3; cursor: default; }
+.select-delete:active:not(:disabled) { opacity: 0.5; }
+
+.confirm-modal .summary-preview {
+  background: var(--card); border-radius: 10px;
+  padding: 0; margin: 8px 0 14px;
+  max-height: 220px; overflow-y: auto;
+}
+.confirm-modal .summary-row {
+  display: flex; justify-content: space-between;
+  padding: 9px 14px; border-bottom: 0.5px solid var(--separator);
+  font-size: 14px;
+}
+.confirm-modal .summary-row:last-child { border-bottom: 0; }
+.confirm-modal .summary-row .name {
+  flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--text);
+}
+.confirm-modal .summary-row .amount {
+  font-variant-numeric: tabular-nums; color: var(--text-secondary);
+  direction: ltr; unicode-bidi: isolate; margin-inline-start: 12px;
+}
+.confirm-modal .summary-more {
+  text-align: center; padding: 9px 14px;
+  color: var(--text-secondary); font-size: 13px;
+}
+.confirm-modal .confirm-total {
+  display: flex; justify-content: space-between;
+  padding: 4px 4px 14px;
+  font-size: 14px; font-weight: 600;
+}
+.confirm-modal .confirm-total .amount {
+  font-variant-numeric: tabular-nums; direction: ltr; unicode-bidi: isolate;
+}
+.confirm-actions { display: flex; gap: 10px; }
+.confirm-actions button {
+  flex: 1; padding: 13px; border: none; border-radius: 12px;
+  font-size: 15px; font-weight: 600; font-family: inherit;
+  cursor: pointer;
+}
+.confirm-actions .cancel { background: var(--field-bg); color: var(--text); }
+.confirm-actions .destructive { background: var(--danger); color: white; }
+
 .action-bar {
   position: fixed;
   bottom: 0; left: 0; right: 0;
@@ -831,6 +884,25 @@ body {
     <div class="section-title" style="margin-right:0">תצוגה מקדימה</div>
     <div class="card" id="importPreview"></div>
     <div class="import-summary" id="importSummary"></div>
+  </div>
+</div>
+
+<!-- DESTRUCTIVE CONFIRM (bulk delete) -->
+<div class="modal-overlay" id="confirmModal">
+  <div class="modal confirm-modal">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <div style="width:48px"></div>
+      <div class="modal-title" id="confirmTitle">למחוק?</div>
+      <div style="width:48px"></div>
+    </div>
+    <div id="confirmHint" style="font-size:14px;color:var(--text-secondary);margin-bottom:6px;line-height:1.45"></div>
+    <div class="summary-preview" id="confirmPreview"></div>
+    <div class="confirm-total" id="confirmTotal"></div>
+    <div class="confirm-actions">
+      <button class="cancel" onclick="closeConfirm()">ביטול</button>
+      <button class="destructive" id="confirmGo">מחק</button>
+    </div>
   </div>
 </div>
 
@@ -1900,6 +1972,10 @@ document.getElementById('actionSheet').addEventListener('click', e => {
   if (e.target.id === 'actionSheet') closeActionSheet();
 });
 
+document.getElementById('confirmModal').addEventListener('click', e => {
+  if (e.target.id === 'confirmModal') closeConfirm();
+});
+
 // ============ CATEGORY MANAGER (BULK MERGE) ============
 function openCatManager() {
   if (!dataLoaded) { showToast('טען נתונים קודם'); return; }
@@ -2111,7 +2187,7 @@ function updateHeader() {
     titleEl.innerHTML = `<button class="select-cancel" onclick="exitSelectMode()">ביטול</button><span class="select-count">${n} נבחרו</span>`;
     titleEl.style.display = 'flex';
     titleEl.style.alignItems = 'center';
-    actionsEl.innerHTML = `<button class="select-all" onclick="toggleSelectAll()">${visibleAllSelected() ? 'נקה' : 'בחר הכל'}</button>`;
+    actionsEl.innerHTML = `<button class="select-delete" id="selectDelete" onclick="promptBulkDelete()">מחק</button><button class="select-all" onclick="toggleSelectAll()">${visibleAllSelected() ? 'נקה' : 'בחר הכל'}</button>`;
   } else {
     titleEl.textContent = 'הוצאות';
     titleEl.style.display = '';
@@ -2135,6 +2211,8 @@ function updateActionBar() {
   const bar = document.getElementById('actionBar');
   bar.classList.toggle('visible', selectMode);
   bar.classList.toggle('disabled', selectedIds.size === 0);
+  const delBtn = document.getElementById('selectDelete');
+  if (delBtn) delBtn.disabled = (selectedIds.size === 0);
 }
 
 function toggleRowSelection(id) {
@@ -2204,6 +2282,63 @@ function applyBulkScope(newScope) {
         const t = transactions.find(x => x.id === id);
         if (t) t.scope = oldScopes[id];
       }
+    }
+  });
+  ensureShakeListener();
+  exitSelectMode();
+}
+
+function promptBulkDelete() {
+  if (selectedIds.size === 0) return;
+  const ids = Array.from(selectedIds);
+  const items = ids.map(id => transactions.find(t => t.id === id)).filter(Boolean);
+  if (items.length === 0) return;
+  const total = items.reduce((s, t) => s + t.amount, 0);
+  const previewN = 5;
+  const sorted = [...items].sort((a, b) => b.date - a.date);
+
+  document.getElementById('confirmTitle').textContent = `למחוק ${items.length} ${items.length === 1 ? 'עסקה' : 'עסקאות'}?`;
+  document.getElementById('confirmHint').textContent = 'פעולה זו אינה הפיכה. ניתן לבטל בתוך 3 שניות אחרי המחיקה.';
+
+  let previewHtml = '';
+  for (const t of sorted.slice(0, previewN)) {
+    previewHtml += `
+      <div class="summary-row">
+        <span class="name">${escapeHtml(t.merchant)}</span>
+        <span class="amount">${fmtMoney(t.amount)}</span>
+      </div>`;
+  }
+  if (items.length > previewN) {
+    previewHtml += `<div class="summary-more">+ עוד ${items.length - previewN}</div>`;
+  }
+  document.getElementById('confirmPreview').innerHTML = previewHtml;
+  document.getElementById('confirmTotal').innerHTML =
+    `<span>סה״כ</span><span class="amount">${fmtMoney(total)}</span>`;
+
+  // Wire confirm button (rebind to capture current ids)
+  document.getElementById('confirmGo').onclick = () => performBulkDelete(ids);
+  document.getElementById('confirmModal').classList.add('visible');
+}
+
+function closeConfirm() {
+  document.getElementById('confirmModal').classList.remove('visible');
+}
+
+function performBulkDelete(ids) {
+  closeConfirm();
+  // Snapshot the rows being deleted for undo
+  const removed = ids.map(id => transactions.find(t => t.id === id)).filter(Boolean);
+  if (removed.length === 0) {
+    exitSelectMode();
+    return;
+  }
+  const idSet = new Set(ids);
+  transactions = transactions.filter(t => !idSet.has(t.id));
+  dirty = true;
+  setupUndo({
+    label: `נמחקו ${removed.length} עסקאות`,
+    apply: () => {
+      transactions = transactions.concat(removed);
     }
   });
   ensureShakeListener();
