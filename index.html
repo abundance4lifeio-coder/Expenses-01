@@ -214,8 +214,38 @@ body {
 .cat-row, .card-row { padding: 14px 16px; border-bottom: 0.5px solid var(--separator); }
 .cat-row { cursor: pointer; transition: background 0.15s; }
 .cat-row:active { background: var(--field-bg); }
+.cat-row.parent {
+  background: linear-gradient(135deg, rgba(0, 122, 255, 0.07) 0%, rgba(0, 122, 255, 0.03) 100%);
+}
+.cat-row.parent .cat-name {
+  font-weight: 600;
+}
+.cat-row.parent .parent-count {
+  display: inline-block;
+  margin-inline-start: 8px;
+  background: var(--field-bg);
+  color: var(--text-secondary);
+  font-size: 11px; font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 100px;
+  vertical-align: middle;
+  font-variant-numeric: tabular-nums;
+}
+.cat-row.child {
+  padding-inline-start: 32px;
+  background: var(--field-bg);
+}
+.cat-row.child .cat-name {
+  font-size: 14px; color: var(--text-secondary);
+}
+.cat-row.child .bar-fill {
+  background: var(--text-tertiary);
+}
 .cat-row.active {
   background: rgba(0, 122, 255, 0.10);
+}
+.cat-row.active.parent {
+  background: rgba(0, 122, 255, 0.16);
 }
 .cat-row.active .cat-name { color: var(--accent); font-weight: 600; }
 .cat-row.active .bar-fill { background: var(--accent); }
@@ -227,6 +257,21 @@ body {
   font-size: 11px;
   color: var(--recurring);
   vertical-align: middle;
+}
+
+.installment-badge {
+  display: inline-block;
+  margin-inline-start: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  padding: 1px 7px;
+  border-radius: 100px;
+  background: var(--field-bg);
+  color: var(--text-secondary);
+  vertical-align: middle;
+  direction: ltr;
+  unicode-bidi: isolate;
 }
 
 .cat-picker-list {
@@ -245,20 +290,37 @@ body {
 }
 .cat-manager-row {
   width: 100%; background: none; border: none; border-bottom: 0.5px solid var(--separator);
-  padding: 14px 16px; text-align: start; font-family: inherit;
+  padding: 12px 16px; text-align: start; font-family: inherit;
   font-size: 16px; color: var(--text); cursor: pointer;
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  display: flex; align-items: center; gap: 12px;
   transition: background 0.12s;
 }
 .cat-manager-row:last-child { border-bottom: 0; }
 .cat-manager-row:active { background: var(--field-bg); }
-.cat-manager-row .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cat-manager-row .main { flex: 1; min-width: 0; }
+.cat-manager-row .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cat-manager-row .name.empty { color: var(--text-secondary); font-style: italic; }
+.cat-manager-row .merchants {
+  font-size: 12px; color: var(--text-secondary);
+  margin-top: 2px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .cat-manager-row .count {
   font-size: 13px; color: var(--text-secondary);
   font-variant-numeric: tabular-nums; flex-shrink: 0;
 }
 .cat-manager-row .chev { color: var(--text-tertiary); font-size: 18px; flex-shrink: 0; }
+
+.parent-tag {
+  display: inline-block;
+  margin-inline-start: 8px;
+  font-size: 11px; font-weight: 500;
+  padding: 1px 7px;
+  border-radius: 100px;
+  background: rgba(0, 122, 255, 0.12);
+  color: var(--accent);
+  vertical-align: middle;
+}
 .cat-option {
   width: 100%; background: none; border: none; border-bottom: 0.5px solid var(--separator);
   padding: 14px 16px; text-align: start; font-family: inherit;
@@ -770,6 +832,19 @@ body {
   </div>
 </div>
 
+<!-- ACTION SHEET (generic) -->
+<div class="modal-overlay" id="actionSheet">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <button class="modal-cancel" onclick="closeActionSheet()">ביטול</button>
+      <div class="modal-title" id="actionSheetTitle"></div>
+      <div style="width:48px"></div>
+    </div>
+    <div class="cat-picker-list" id="actionSheetList"></div>
+  </div>
+</div>
+
 <!-- CATEGORY MANAGER -->
 <div class="modal-overlay" id="catManager">
   <div class="modal">
@@ -822,6 +897,7 @@ const DEFAULT_CATEGORIES = [
 
 // ============ STATE ============
 let transactions = [];
+let parentCategories = {}; // { 'אוכל בחוץ': ['מסעדות', 'מזון מהיר'], ... }
 let dataLoaded = false;
 let dirty = false;
 let editingId = null;
@@ -849,12 +925,18 @@ function fmtMoney(n) {
 }
 function fmtDate(d) {
   const now = new Date();
-  if (d.toDateString() === now.toDateString()) {
+  const hasTime = !(d.getHours() === 0 && d.getMinutes() === 0 && d.getSeconds() === 0);
+  if (d.toDateString() === now.toDateString() && hasTime) {
     return d.toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit' });
   }
   const sameYear = d.getFullYear() === now.getFullYear();
-  return d.toLocaleDateString(LOCALE,
+  const dateStr = d.toLocaleDateString(LOCALE,
     sameYear ? { month: 'short', day: 'numeric' } : { month: 'short', day: 'numeric', year: '2-digit' });
+  if (hasTime && d.toDateString() !== now.toDateString()) {
+    const timeStr = d.toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit' });
+    return `${dateStr} ${timeStr}`;
+  }
+  return dateStr;
 }
 function toDatetimeLocal(d) {
   const pad = n => String(n).padStart(2, '0');
@@ -874,9 +956,23 @@ function sameDay(a, b) {
 // CSV columns: date, amount, merchant, card, category, scope, subcategory
 function parseCSV(text) {
   if (!text) return [];
+  parentCategories = {};
   const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
   const rows = [];
   for (const line of lines) {
+    if (line.startsWith('#PARENTS:')) {
+      // Format: #PARENTS:parentName|child1;child2;child3||parent2|c1;c2
+      try {
+        const body = line.slice('#PARENTS:'.length);
+        for (const g of body.split('||')) {
+          const [pname, kids] = g.split('|');
+          if (pname && kids) {
+            parentCategories[pname] = kids.split(';').filter(Boolean);
+          }
+        }
+      } catch (e) { console.warn('Bad parents line', e); }
+      continue;
+    }
     if (line.startsWith('#')) continue;
     const parts = line.split(',');
     if (parts.length < 5) continue;
@@ -892,7 +988,8 @@ function parseCSV(text) {
       category: parts[4] || '',
       scope: parts[5] || '',
       subcategory: parts[6] || '',
-      recurring: parts[7] === '1'
+      recurring: parts[7] === '1',
+      installment: parts[8] || ''
     });
   }
   return rows.sort((a, b) => b.date - a.date);
@@ -900,7 +997,16 @@ function parseCSV(text) {
 
 function toCSV(txs) {
   const sorted = [...txs].sort((a, b) => a.date - b.date);
-  return sorted.map(t => [
+  let header = '';
+  const parentKeys = Object.keys(parentCategories);
+  if (parentKeys.length > 0) {
+    const groups = parentKeys.map(p => {
+      const safe = (parentCategories[p] || []).map(c => c.replace(/[|;]/g, ' '));
+      return p.replace(/[|;]/g, ' ') + '|' + safe.join(';');
+    });
+    header = '#PARENTS:' + groups.join('||') + '\n';
+  }
+  return header + sorted.map(t => [
     t.date.toISOString(),
     t.amount.toFixed(2),
     clean(t.merchant),
@@ -908,7 +1014,8 @@ function toCSV(txs) {
     clean(t.category),
     clean(t.scope),
     clean(t.subcategory),
-    t.recurring ? '1' : ''
+    t.recurring ? '1' : '',
+    clean(t.installment || '')
   ].join(',')).join('\n') + '\n';
 }
 
@@ -937,8 +1044,13 @@ function filterByCard(txs, card) {
 }
 function filterByCategory(txs, cat) {
   if (cat === null || cat === undefined) return txs;
-  if (cat === '') return txs; // no filter
+  if (cat === '') return txs;
   if (cat === '__empty') return txs.filter(t => !t.category);
+  // If cat is a parent group, include all of its children
+  if (parentCategories[cat]) {
+    const set = new Set(parentCategories[cat]);
+    return txs.filter(t => set.has(t.category));
+  }
   return txs.filter(t => t.category === cat);
 }
 function filterByPeriod(txs, period) {
@@ -1097,8 +1209,28 @@ function render() {
     const k = t.category || '__empty';
     byCat[k] = (byCat[k] || 0) + t.amount;
   }
-  const cats = Object.entries(byCat).sort((a, b) => b[1] - a[1]);
-  const maxCat = cats[0]?.[1] || 1;
+
+  // Build the parent overlay: categories in any group sum into their parent;
+  // categories NOT in any group show as flat entries.
+  // Map: childCat -> parentName
+  const childToParent = {};
+  for (const p of Object.keys(parentCategories)) {
+    for (const c of (parentCategories[p] || [])) childToParent[c] = p;
+  }
+  const grouped = {}; // { groupKey: amount } where groupKey is either parent name or category name
+  const childAmounts = {}; // { parentName: { childCat: amount } } for expansion
+  for (const [cat, amt] of Object.entries(byCat)) {
+    const parent = childToParent[cat];
+    if (parent) {
+      grouped[parent] = (grouped[parent] || 0) + amt;
+      if (!childAmounts[parent]) childAmounts[parent] = {};
+      childAmounts[parent][cat] = amt;
+    } else {
+      grouped[cat] = (grouped[cat] || 0) + amt;
+    }
+  }
+  const groupEntries = Object.entries(grouped).sort((a, b) => b[1] - a[1]);
+  const maxCat = groupEntries[0]?.[1] || 1;
 
   const byCard = {};
   for (const t of filtered) byCard[t.card || '(ללא כרטיס)'] = (byCard[t.card || '(ללא כרטיס)'] || 0) + t.amount;
@@ -1146,18 +1278,39 @@ function render() {
     }
 
     html += `<div class="section-title">לפי קטגוריה ${currentCategory ? '· הקש שוב לניקוי' : '· הקש לסינון'}</div><div class="card">`;
-    for (const [name, amt] of cats) {
+    for (const [name, amt] of groupEntries) {
       const pct = (amt / maxCat) * 100;
+      const isParent = !!parentCategories[name];
       const displayName = name === '__empty' ? 'ללא קטגוריה' : name;
-      const isActive = currentCategory === name || (currentCategory === '__empty' && name === '__empty');
+      const isActive = currentCategory === name;
+      const rowClass = `cat-row${isActive ? ' active' : ''}${isParent ? ' parent' : ''}`;
+      const childCount = isParent ? (parentCategories[name] || []).length : 0;
+      const parentSuffix = isParent ? `<span class="parent-count">${childCount}</span>` : '';
       html += `
-        <div class="cat-row${isActive ? ' active' : ''}" data-cat="${escapeHtml(name)}">
+        <div class="${rowClass}" data-cat="${escapeHtml(name)}" data-is-parent="${isParent ? '1' : '0'}">
           <div class="cat-header">
-            <span class="cat-name">${escapeHtml(displayName)}</span>
+            <span class="cat-name">${escapeHtml(displayName)}${parentSuffix}</span>
             <span class="cat-amount">${fmtMoney(amt)}</span>
           </div>
           <div class="bar"><div class="bar-fill" style="width:${pct}%"></div></div>
         </div>`;
+      // Show children inline beneath an active parent
+      if (isParent && isActive && childAmounts[name]) {
+        const kids = Object.entries(childAmounts[name]).sort((a, b) => b[1] - a[1]);
+        const maxKid = kids[0]?.[1] || 1;
+        for (const [kidName, kidAmt] of kids) {
+          const kidPct = (kidAmt / maxKid) * 100;
+          const kidDisplay = kidName === '__empty' ? 'ללא קטגוריה' : kidName;
+          html += `
+            <div class="cat-row child" data-cat="${escapeHtml(kidName)}" data-is-parent="0">
+              <div class="cat-header">
+                <span class="cat-name">${escapeHtml(kidDisplay)}</span>
+                <span class="cat-amount">${fmtMoney(kidAmt)}</span>
+              </div>
+              <div class="bar"><div class="bar-fill" style="width:${kidPct}%"></div></div>
+            </div>`;
+        }
+      }
     }
     html += `</div>`;
 
@@ -1180,6 +1333,7 @@ function render() {
       const selClass = selectedIds.has(t.id) ? ' selected' : '';
       const checkbox = selectMode ? '<div class="tx-checkbox"></div>' : '';
       const recurIcon = t.recurring ? '<span class="recurring-icon" title="הוצאה קבועה">⟲</span>' : '';
+      const instBadge = t.installment ? `<span class="installment-badge">${escapeHtml(t.installment)}</span>` : '';
       html += `
         <div class="tx-swipe-wrap" data-id="${t.id}">
           <div class="swipe-bg swipe-bg-family">${famLabel}</div>
@@ -1187,11 +1341,11 @@ function render() {
           <div class="tx-row${selClass}" data-id="${t.id}" data-scope="${escapeHtml(t.scope)}">
             ${checkbox}
             <div class="tx-info">
-              <div class="tx-merchant">${escapeHtml(t.merchant)}${recurIcon}</div>
+              <div class="tx-merchant">${escapeHtml(t.merchant)}${instBadge}${recurIcon}</div>
               <div class="tx-meta">${metaItems.join(' · ')}</div>
             </div>
             <div class="tx-amount">${fmtMoney(t.amount)}</div>
-            <div class="tx-chevron">‹</div>
+            <div class="tx-chevron">›</div>
           </div>
         </div>`;
     }
@@ -1298,7 +1452,7 @@ function saveModal() {
     const t = transactions.find(x => x.id === editingId);
     Object.assign(t, { amount, merchant, card, category, recurring, subcategory, scope, date });
   } else {
-    transactions.push({ id: uuid(), amount, merchant, card, category, recurring, subcategory, scope, date });
+    transactions.push({ id: uuid(), amount, merchant, card, category, recurring, subcategory, scope, date, installment: '' });
   }
   dirty = true;
   closeModal();
@@ -1378,6 +1532,7 @@ function parseImportXLSX(wb) {
   const txAmtIdx = header.findIndex(c => c.includes('סכום עסקה') || c === 'סכום' || c.includes('סכום'));
   const amountIdx = chargeIdx >= 0 ? chargeIdx : txAmtIdx;
   const categoryIdx = header.findIndex(c => c.includes('ענף') || c.includes('קטגוריה'));
+  const notesIdx = header.findIndex(c => c.includes('הערות') || c.includes('הערה'));
 
   // Detect card name from pre-header rows
   let suggestedCard = '';
@@ -1432,6 +1587,13 @@ function parseImportXLSX(wb) {
 
     const merchant = String(r[merchantIdx] || '').trim() || 'לא ידוע';
     const category = String(r[categoryIdx] || '').trim();
+    const notes = notesIdx >= 0 ? String(r[notesIdx] || '').trim() : '';
+    // Look for installment patterns: "תשלום 5 מתוך 12" → "5/12"
+    let installment = '';
+    if (notes) {
+      const m = notes.match(/תשלום\s+(\d+)\s+מתוך\s+(\d+)/);
+      if (m) installment = `${m[1]}/${m[2]}`;
+    }
 
     out.push({
       date,
@@ -1440,7 +1602,8 @@ function parseImportXLSX(wb) {
       category,
       card: '', // filled in modal
       scope: '',
-      subcategory: ''
+      subcategory: '',
+      installment
     });
   }
 
@@ -1599,7 +1762,8 @@ function performImport() {
     category: r.tx.category,
     scope,
     subcategory: '',
-    recurring: false
+    recurring: false,
+    installment: r.tx.installment || ''
   }));
   if (fresh.length === 0) {
     closeImportModal();
@@ -1642,6 +1806,12 @@ function backfillCategories() {
 // ============ SAVE BACK ============
 async function saveChanges() {
   if (!dirty || !dataLoaded) return;
+  // Desktop mode: write directly to the picked file
+  if (desktopFileHandle) {
+    await saveDesktopFile();
+    return;
+  }
+  // iOS Shortcut path: clipboard + launch Save Expenses shortcut
   const csv = toCSV(transactions);
   try {
     await navigator.clipboard.writeText(csv);
@@ -1695,6 +1865,39 @@ function closeCatPicker() {
   catPickerCallback = null;
 }
 
+// ============ ACTION SHEET ============
+let actionSheetCallback = null;
+
+function openActionSheet(title, actions, callback) {
+  actionSheetCallback = callback;
+  document.getElementById('actionSheetTitle').textContent = title || '';
+  const list = document.getElementById('actionSheetList');
+  list.innerHTML = actions.map(a => {
+    const danger = a.danger ? ' style="color:var(--danger)"' : '';
+    return `<button class="cat-option" data-id="${escapeHtml(a.id)}"${danger}>
+      <span>${escapeHtml(a.label)}</span>
+    </button>`;
+  }).join('');
+  list.querySelectorAll('.cat-option').forEach(el => {
+    el.addEventListener('click', () => {
+      const id = el.dataset.id;
+      const cb = actionSheetCallback;
+      closeActionSheet();
+      if (cb) cb(id);
+    });
+  });
+  document.getElementById('actionSheet').classList.add('visible');
+}
+
+function closeActionSheet() {
+  document.getElementById('actionSheet').classList.remove('visible');
+  actionSheetCallback = null;
+}
+
+document.getElementById('actionSheet').addEventListener('click', e => {
+  if (e.target.id === 'actionSheet') closeActionSheet();
+});
+
 // ============ CATEGORY MANAGER (BULK MERGE) ============
 function openCatManager() {
   if (!dataLoaded) { showToast('טען נתונים קודם'); return; }
@@ -1707,11 +1910,15 @@ function closeCatManager() {
 }
 
 function renderCatManager() {
-  // Tally each category's transaction count (including empty)
+  // Tally each category's transaction count + collect distinct merchants
   const counts = new Map();
+  const merchantsByCat = new Map();
   for (const t of transactions) {
     const k = t.category || '';
     counts.set(k, (counts.get(k) || 0) + 1);
+    if (!merchantsByCat.has(k)) merchantsByCat.set(k, new Map());
+    const m = merchantsByCat.get(k);
+    m.set(t.merchant, (m.get(t.merchant) || 0) + 1);
   }
   // Sort by count descending, then alphabetically
   const sorted = Array.from(counts.entries()).sort((a, b) => {
@@ -1725,12 +1932,26 @@ function renderCatManager() {
     hint.textContent = 'אין כפילויות למיזוג כרגע. אחרי הייבוא הבא יוצגו כאן הקטגוריות מהדפי חיוב.';
     return;
   }
-  hint.textContent = 'הקש על קטגוריה כדי למזג אותה לקטגוריה אחרת. הספירה משמאל היא מספר העסקאות.';
+  hint.textContent = 'הקש על קטגוריה כדי למזג, לקבץ, או להוציא מקבוצה.';
   list.innerHTML = sorted.map(([cat, n]) => {
     const display = cat || 'ללא קטגוריה';
     const emptyClass = cat ? '' : ' empty';
+    const parent = Object.keys(parentCategories).find(p => (parentCategories[p] || []).includes(cat));
+    const parentTag = parent ? `<span class="parent-tag">${escapeHtml(parent)}</span>` : '';
+    const merchantMap = merchantsByCat.get(cat) || new Map();
+    const topMerchants = Array.from(merchantMap.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(e => e[0]);
+    const extra = merchantMap.size > 3 ? ` +${merchantMap.size - 3}` : '';
+    const merchantsLine = topMerchants.length > 0
+      ? topMerchants.join(' · ') + extra
+      : '';
     return `<button class="cat-manager-row" data-cat="${escapeHtml(cat)}">
-      <span class="name${emptyClass}">${escapeHtml(display)}</span>
+      <div class="main">
+        <div class="name${emptyClass}">${escapeHtml(display)}${parentTag}</div>
+        ${merchantsLine ? `<div class="merchants">${escapeHtml(merchantsLine)}</div>` : ''}
+      </div>
       <span class="count">${n}</span>
       <span class="chev">›</span>
     </button>`;
@@ -1738,15 +1959,94 @@ function renderCatManager() {
   list.querySelectorAll('.cat-manager-row').forEach(el => {
     el.addEventListener('click', () => {
       const source = el.dataset.cat;
-      promptMergeTarget(source);
+      promptCategoryAction(source);
     });
   });
 }
 
+function promptCategoryAction(sourceCat) {
+  const sourceLabel = sourceCat || 'ללא קטגוריה';
+  const parentKeys = Object.keys(parentCategories);
+  const currentParent = Object.keys(parentCategories).find(p => (parentCategories[p] || []).includes(sourceCat));
+
+  // Build action items
+  const actions = [];
+  // Group / move-to-parent
+  if (currentParent) {
+    actions.push({ id: 'remove-parent', label: `הסר מקבוצה "${currentParent}"`, danger: false });
+  }
+  actions.push({ id: 'group', label: parentKeys.length > 0 ? 'הוסף לקבוצה...' : 'צור קבוצה חדשה...', danger: false });
+  if (sourceCat) {
+    actions.push({ id: 'merge', label: 'מזג לקטגוריה אחרת...', danger: false });
+  }
+
+  openActionSheet(sourceLabel, actions, choice => {
+    if (choice === 'merge') {
+      promptMergeTarget(sourceCat);
+    } else if (choice === 'group') {
+      promptGroupTarget(sourceCat);
+    } else if (choice === 'remove-parent') {
+      removeCategoryFromParent(sourceCat, currentParent);
+    }
+  });
+}
+
+function promptGroupTarget(sourceCat) {
+  const parents = Object.keys(parentCategories);
+  const actions = parents.map(p => ({ id: `to:${p}`, label: p }));
+  actions.push({ id: 'new-parent', label: '+ צור קבוצה חדשה', danger: false });
+  openActionSheet(`קבוצה ל-"${sourceCat || 'ללא קטגוריה'}"`, actions, choice => {
+    if (choice === 'new-parent') {
+      promptCreateParent(sourceCat);
+    } else if (choice.startsWith('to:')) {
+      const parent = choice.slice(3);
+      addCategoryToParent(sourceCat, parent);
+    }
+  });
+}
+
+function promptCreateParent(sourceCat) {
+  const name = prompt('שם הקבוצה החדשה:');
+  if (!name || !name.trim()) return;
+  const trimmed = name.trim();
+  if (parentCategories[trimmed]) {
+    showToast(`הקבוצה "${trimmed}" כבר קיימת`);
+    return;
+  }
+  parentCategories[trimmed] = [sourceCat];
+  dirty = true;
+  showToast(`נוצרה הקבוצה "${trimmed}"`);
+  renderCatManager();
+  render();
+}
+
+function addCategoryToParent(cat, parent) {
+  if (!parentCategories[parent]) parentCategories[parent] = [];
+  if (!parentCategories[parent].includes(cat)) {
+    parentCategories[parent].push(cat);
+    dirty = true;
+    showToast(`נוסף ל-${parent}`);
+    renderCatManager();
+    render();
+  }
+}
+
+function removeCategoryFromParent(cat, parent) {
+  if (!parentCategories[parent]) return;
+  parentCategories[parent] = parentCategories[parent].filter(c => c !== cat);
+  if (parentCategories[parent].length === 0) {
+    delete parentCategories[parent];
+    showToast(`הקבוצה "${parent}" הוסרה`);
+  } else {
+    showToast(`הוסר מ-${parent}`);
+  }
+  dirty = true;
+  renderCatManager();
+  render();
+}
+
 function promptMergeTarget(sourceCat) {
   const sourceLabel = sourceCat || 'ללא קטגוריה';
-  // Re-use the category picker but exclude the source itself
-  const filterFn = c => c !== sourceCat;
   openCatPicker(null, `מזג "${sourceLabel}" אל`, target => {
     if (target === sourceCat) return;
     const affected = transactions.filter(t => (t.category || '') === sourceCat);
@@ -1764,7 +2064,7 @@ function promptMergeTarget(sourceCat) {
         }
       }
     });
-    renderCatManager(); // refresh list
+    renderCatManager();
     render();
     showToast(`מוזגו ${affected.length} עסקאות`);
   });
@@ -2162,21 +2462,164 @@ document.getElementById('catManager').addEventListener('click', e => {
   if (e.target.id === 'catManager') closeCatManager();
 });
 
-// ============ INIT ============
-const loaded = loadFromHash();
-if (loaded !== null) {
-  transactions = loaded;
-  dataLoaded = true;
-  // View-time backfill: any blank-category row whose merchant is known
-  // elsewhere in history gets auto-filled. Surfaces the Save button so
-  // the change persists when the user taps שמירה.
-  const updated = backfillCategories();
-  if (updated > 0) {
-    dirty = true;
-    showToast(`מולאו ${updated} קטגוריות אוטומטית`);
+// ============ DESKTOP FILE ACCESS ============
+// On desktop browsers that support the File System Access API (Chrome, Edge, etc.),
+// we let the user pick the Dropbox-synced CSV once and remember the handle in IndexedDB
+// so future loads happen with one click (browser auto-grants for same-origin returning page).
+let desktopFileHandle = null;
+const hasFileSystemAccess = (typeof window !== 'undefined') && 'showOpenFilePicker' in window;
+const isLikelyDesktop = !(/iPhone|iPad|iPod|Android/i.test(navigator.userAgent));
+
+// Minimal IndexedDB wrapper for storing the handle
+function idbGet(key) {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('expenses-app', 1);
+    req.onupgradeneeded = () => req.result.createObjectStore('kv');
+    req.onerror = () => reject(req.error);
+    req.onsuccess = () => {
+      const tx = req.result.transaction('kv', 'readonly');
+      const g = tx.objectStore('kv').get(key);
+      g.onsuccess = () => resolve(g.result);
+      g.onerror = () => reject(g.error);
+    };
+  });
+}
+function idbSet(key, value) {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('expenses-app', 1);
+    req.onupgradeneeded = () => req.result.createObjectStore('kv');
+    req.onerror = () => reject(req.error);
+    req.onsuccess = () => {
+      const tx = req.result.transaction('kv', 'readwrite');
+      tx.objectStore('kv').put(value, key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    };
+  });
+}
+
+async function loadCSVFromHandle(handle) {
+  const file = await handle.getFile();
+  return await file.text();
+}
+
+async function saveCSVToHandle(handle, text) {
+  const w = await handle.createWritable();
+  await w.write(text);
+  await w.close();
+}
+
+async function ensureHandlePermission(handle, mode = 'readwrite') {
+  if (!handle.queryPermission) return true;
+  const q = await handle.queryPermission({ mode });
+  if (q === 'granted') return true;
+  const r = await handle.requestPermission({ mode });
+  return r === 'granted';
+}
+
+async function pickDesktopFile() {
+  try {
+    const [handle] = await window.showOpenFilePicker({
+      types: [{ description: 'CSV', accept: { 'text/csv': ['.csv'] } }],
+      multiple: false
+    });
+    await idbSet('fileHandle', handle);
+    desktopFileHandle = handle;
+    await loadDesktopFile();
+  } catch (e) {
+    if (e.name !== 'AbortError') {
+      console.error(e);
+      showToast('שגיאה בבחירת הקובץ');
+    }
   }
 }
-render();
+
+async function loadDesktopFile() {
+  if (!desktopFileHandle) return;
+  const ok = await ensureHandlePermission(desktopFileHandle, 'readwrite');
+  if (!ok) { showToast('אין הרשאה לקובץ'); return; }
+  try {
+    const text = await loadCSVFromHandle(desktopFileHandle);
+    transactions = parseCSV(text);
+    dataLoaded = true;
+    const updated = backfillCategories();
+    if (updated > 0) { dirty = true; showToast(`מולאו ${updated} קטגוריות אוטומטית`); }
+    render();
+  } catch (e) {
+    console.error(e);
+    showToast('שגיאה בקריאת הקובץ');
+  }
+}
+
+async function saveDesktopFile() {
+  if (!desktopFileHandle || !dataLoaded) return;
+  try {
+    const ok = await ensureHandlePermission(desktopFileHandle, 'readwrite');
+    if (!ok) { showToast('אין הרשאה לכתיבה'); return; }
+    await saveCSVToHandle(desktopFileHandle, toCSV(transactions));
+    dirty = false;
+    render();
+    showToast('נשמר');
+  } catch (e) {
+    console.error(e);
+    showToast('שגיאה בשמירה');
+  }
+}
+
+function renderDesktopWelcome() {
+  document.getElementById('content').innerHTML = `
+    <div class="card empty" style="margin-top:32px;padding:36px 24px">
+      <div style="font-size:46px;margin-bottom:12px">💻</div>
+      <div style="font-size:18px;font-weight:600;color:var(--text);margin-bottom:8px">פתיחה ב-PC</div>
+      <div style="margin-bottom:22px">בחר את הקובץ <strong>Expenses.csv</strong> מתיקיית Dropbox. הדפדפן יזכור אותו לפתיחות הבאות.</div>
+      <button class="save-btn visible" style="display:inline-block" onclick="pickDesktopFile()">בחר קובץ</button>
+    </div>
+  `;
+  document.querySelector('.fab').style.display = 'none';
+  document.getElementById('periodSegment').style.display = 'none';
+  document.getElementById('periodStepper').style.display = 'none';
+  document.getElementById('scopeChips').style.display = 'none';
+  document.getElementById('cardChips').style.display = 'none';
+  document.querySelector('.search').style.display = 'none';
+}
+
+// ============ INIT ============
+(async function init() {
+  const loaded = loadFromHash();
+  if (loaded !== null) {
+    // iOS Shortcut path
+    transactions = loaded;
+    dataLoaded = true;
+    const updated = backfillCategories();
+    if (updated > 0) { dirty = true; showToast(`מולאו ${updated} קטגוריות אוטומטית`); }
+    render();
+    return;
+  }
+
+  // Desktop with File System Access support: try to silently re-open the saved handle
+  if (hasFileSystemAccess && isLikelyDesktop) {
+    try {
+      const handle = await idbGet('fileHandle');
+      if (handle) {
+        desktopFileHandle = handle;
+        // queryPermission first — if 'granted', re-load without prompting
+        const q = handle.queryPermission ? await handle.queryPermission({ mode: 'readwrite' }) : 'granted';
+        if (q === 'granted') {
+          await loadDesktopFile();
+          return;
+        }
+        // Otherwise show the welcome with "Choose file" — user will tap and re-grant
+      }
+    } catch (e) {
+      console.warn('Handle restore failed:', e);
+    }
+    renderDesktopWelcome();
+    return;
+  }
+
+  // Fall through: phone welcome screen (the existing one in render())
+  render();
+})();
 </script>
 </body>
 </html>
