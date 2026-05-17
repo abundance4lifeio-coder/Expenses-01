@@ -30,6 +30,7 @@
   --danger: #ff3b30;
   --family: #ff9500;
   --personal: #5856d6;
+  --recurring: #00b8a9;
   --field-bg: rgba(118, 118, 128, 0.08);
   --overlay-bg: rgba(0,0,0,0.45);
   --header-bg: rgba(248, 248, 250, 0.82);
@@ -186,6 +187,7 @@ body {
 .scope-chip.active, .card-chip.active { background: var(--accent); color: white; }
 .scope-chip[data-scope="Family"].active { background: var(--family); }
 .scope-chip[data-scope="Personal"].active { background: var(--personal); }
+.scope-chip[data-scope="__recurring"].active { background: var(--recurring); }
 
 .card-chips { margin-bottom: 18px; }
 
@@ -223,7 +225,7 @@ body {
   display: inline-block;
   margin-inline-start: 4px;
   font-size: 11px;
-  color: var(--accent);
+  color: var(--recurring);
   vertical-align: middle;
 }
 
@@ -231,6 +233,32 @@ body {
   background: var(--card); border-radius: 10px; overflow: hidden;
   max-height: 60vh; overflow-y: auto;
 }
+
+.cat-manager-hint {
+  font-size: 13px; color: var(--text-secondary);
+  padding: 0 4px 12px;
+  line-height: 1.4;
+}
+.cat-manager-list {
+  background: var(--card); border-radius: 10px; overflow: hidden;
+  max-height: 60vh; overflow-y: auto;
+}
+.cat-manager-row {
+  width: 100%; background: none; border: none; border-bottom: 0.5px solid var(--separator);
+  padding: 14px 16px; text-align: start; font-family: inherit;
+  font-size: 16px; color: var(--text); cursor: pointer;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  transition: background 0.12s;
+}
+.cat-manager-row:last-child { border-bottom: 0; }
+.cat-manager-row:active { background: var(--field-bg); }
+.cat-manager-row .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cat-manager-row .name.empty { color: var(--text-secondary); font-style: italic; }
+.cat-manager-row .count {
+  font-size: 13px; color: var(--text-secondary);
+  font-variant-numeric: tabular-nums; flex-shrink: 0;
+}
+.cat-manager-row .chev { color: var(--text-tertiary); font-size: 18px; flex-shrink: 0; }
 .cat-option {
   width: 100%; background: none; border: none; border-bottom: 0.5px solid var(--separator);
   padding: 14px 16px; text-align: start; font-family: inherit;
@@ -261,7 +289,7 @@ body {
   flex-shrink: 0;
   margin-inline-start: auto;
 }
-.ios-switch:checked { background: #34c759; }
+.ios-switch:checked { background: var(--recurring); }
 .ios-switch::before {
   content: ''; position: absolute; top: 2px; left: 2px;
   width: 27px; height: 27px; background: white;
@@ -601,6 +629,12 @@ body {
 <div class="header" id="header">
   <h1 id="headerTitle">הוצאות</h1>
   <div class="header-actions" id="headerActions">
+    <button class="icon-btn" onclick="openCatManager()" aria-label="ניהול קטגוריות">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/>
+        <line x1="7" y1="7" x2="7.01" y2="7"/>
+      </svg>
+    </button>
     <button class="icon-btn" onclick="enterSelectMode()" aria-label="בחירה">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <polyline points="9 11 12 14 22 4"/>
@@ -627,22 +661,22 @@ body {
 <div class="container">
   <div class="card-chips" id="cardChips" style="display:none"></div>
   <div class="segment" id="periodSegment">
-    <button data-period="week">שבוע</button>
-    <button data-period="month" class="active">חודש</button>
-    <button data-period="year">שנה</button>
-    <button data-period="all">הכל</button>
+    <button data-period="week">שבועי</button>
+    <button data-period="month">חודשי</button>
+    <button data-period="year">שנתי</button>
+    <button data-period="all" class="active">הכל</button>
   </div>
   <div class="period-stepper" id="periodStepper">
-    <button class="step-btn" id="stepPrev" aria-label="קודם">›</button>
+    <button class="step-btn" id="stepPrev" aria-label="קודם">‹</button>
     <span class="step-label" id="stepLabel">חודש זה</span>
-    <button class="step-btn" id="stepNext" aria-label="הבא">‹</button>
+    <button class="step-btn" id="stepNext" aria-label="הבא">›</button>
   </div>
   <div class="scope-chips" id="scopeChips">
     <button class="scope-chip active" data-scope="">הכל</button>
     <button class="scope-chip" data-scope="Family">משפחה</button>
     <button class="scope-chip" data-scope="Personal">אישי</button>
-    <button class="scope-chip" data-scope="__untagged">ללא תיוג</button>
     <button class="scope-chip" data-scope="__recurring">קבועות</button>
+    <button class="scope-chip" data-scope="__untagged">ללא תיוג</button>
   </div>
   <div id="content"></div>
 </div>
@@ -736,6 +770,20 @@ body {
   </div>
 </div>
 
+<!-- CATEGORY MANAGER -->
+<div class="modal-overlay" id="catManager">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <button class="modal-cancel" onclick="closeCatManager()">סגור</button>
+      <div class="modal-title">ניהול קטגוריות</div>
+      <div style="width:48px"></div>
+    </div>
+    <div class="cat-manager-hint" id="catManagerHint">הקש על קטגוריה כדי למזג אותה לקטגוריה אחרת.</div>
+    <div class="cat-manager-list" id="catManagerList"></div>
+  </div>
+</div>
+
 <!-- CATEGORY PICKER -->
 <div class="modal-overlay" id="catPicker">
   <div class="modal">
@@ -777,7 +825,7 @@ let transactions = [];
 let dataLoaded = false;
 let dirty = false;
 let editingId = null;
-let currentPeriod = 'month';
+let currentPeriod = 'all';
 let currentPeriodOffset = 0; // 0 = current calendar period, -1 = previous, etc.
 let currentScope = '';
 let currentCard = '';
@@ -884,6 +932,7 @@ function filterByScope(txs, scope) {
 }
 function filterByCard(txs, card) {
   if (!card) return txs;
+  if (card === '__nocard') return txs.filter(t => !t.card || !t.card.trim());
   return txs.filter(t => t.card === card);
 }
 function filterByCategory(txs, cat) {
@@ -981,16 +1030,20 @@ function renderStepper() {
 
 function renderCardChips() {
   const cards = getAllCards();
+  const hasNoCard = transactions.some(t => !t.card || !t.card.trim());
   const chipsEl = document.getElementById('cardChips');
-  if (cards.length <= 1) {
+  if (cards.length === 0) {
     chipsEl.style.display = 'none';
-    if (currentCard && !cards.includes(currentCard)) currentCard = '';
+    if (currentCard) currentCard = '';
     return;
   }
   chipsEl.style.display = 'flex';
   let html = `<button class="card-chip ${!currentCard ? 'active' : ''}" data-card="">הכל</button>`;
   for (const c of cards) {
     html += `<button class="card-chip ${currentCard === c ? 'active' : ''}" data-card="${escapeHtml(c)}">${escapeHtml(c)}</button>`;
+  }
+  if (hasNoCard) {
+    html += `<button class="card-chip ${currentCard === '__nocard' ? 'active' : ''}" data-card="__nocard">ללא כרטיס</button>`;
   }
   chipsEl.innerHTML = html;
 }
@@ -1054,7 +1107,7 @@ function render() {
 
   const labelParts = [getPeriodLabel(currentPeriod, currentPeriodOffset)];
   if (currentScope) labelParts.push(SCOPE_LABELS[currentScope] || currentScope);
-  if (currentCard) labelParts.push(currentCard);
+  if (currentCard) labelParts.push(currentCard === '__nocard' ? 'ללא כרטיס' : currentCard);
   if (currentCategory) labelParts.push(currentCategory === '__empty' ? 'ללא קטגוריה' : currentCategory);
   if (searchQuery) labelParts.push('מסונן');
   const totalLabel = labelParts.join(' · ');
@@ -1642,6 +1695,81 @@ function closeCatPicker() {
   catPickerCallback = null;
 }
 
+// ============ CATEGORY MANAGER (BULK MERGE) ============
+function openCatManager() {
+  if (!dataLoaded) { showToast('טען נתונים קודם'); return; }
+  renderCatManager();
+  document.getElementById('catManager').classList.add('visible');
+}
+
+function closeCatManager() {
+  document.getElementById('catManager').classList.remove('visible');
+}
+
+function renderCatManager() {
+  // Tally each category's transaction count (including empty)
+  const counts = new Map();
+  for (const t of transactions) {
+    const k = t.category || '';
+    counts.set(k, (counts.get(k) || 0) + 1);
+  }
+  // Sort by count descending, then alphabetically
+  const sorted = Array.from(counts.entries()).sort((a, b) => {
+    if (b[1] !== a[1]) return b[1] - a[1];
+    return a[0].localeCompare(b[0], 'he');
+  });
+  const list = document.getElementById('catManagerList');
+  const hint = document.getElementById('catManagerHint');
+  if (sorted.length <= 1) {
+    list.innerHTML = '';
+    hint.textContent = 'אין כפילויות למיזוג כרגע. אחרי הייבוא הבא יוצגו כאן הקטגוריות מהדפי חיוב.';
+    return;
+  }
+  hint.textContent = 'הקש על קטגוריה כדי למזג אותה לקטגוריה אחרת. הספירה משמאל היא מספר העסקאות.';
+  list.innerHTML = sorted.map(([cat, n]) => {
+    const display = cat || 'ללא קטגוריה';
+    const emptyClass = cat ? '' : ' empty';
+    return `<button class="cat-manager-row" data-cat="${escapeHtml(cat)}">
+      <span class="name${emptyClass}">${escapeHtml(display)}</span>
+      <span class="count">${n}</span>
+      <span class="chev">›</span>
+    </button>`;
+  }).join('');
+  list.querySelectorAll('.cat-manager-row').forEach(el => {
+    el.addEventListener('click', () => {
+      const source = el.dataset.cat;
+      promptMergeTarget(source);
+    });
+  });
+}
+
+function promptMergeTarget(sourceCat) {
+  const sourceLabel = sourceCat || 'ללא קטגוריה';
+  // Re-use the category picker but exclude the source itself
+  const filterFn = c => c !== sourceCat;
+  openCatPicker(null, `מזג "${sourceLabel}" אל`, target => {
+    if (target === sourceCat) return;
+    const affected = transactions.filter(t => (t.category || '') === sourceCat);
+    if (affected.length === 0) return;
+    const oldValues = affected.map(t => ({ id: t.id, cat: t.category }));
+    for (const t of affected) t.category = target;
+    dirty = true;
+    const targetLabel = target || 'ללא קטגוריה';
+    setupUndo({
+      label: `${affected.length} עסקאות הועברו: ${sourceLabel} → ${targetLabel}`,
+      apply: () => {
+        for (const o of oldValues) {
+          const t = transactions.find(x => x.id === o.id);
+          if (t) t.category = o.cat;
+        }
+      }
+    });
+    renderCatManager(); // refresh list
+    render();
+    showToast(`מוזגו ${affected.length} עסקאות`);
+  });
+}
+
 function showToast(msg) {
   const el = document.getElementById('toast');
   el.textContent = msg;
@@ -1687,6 +1815,9 @@ function updateHeader() {
     titleEl.style.display = '';
     titleEl.style.alignItems = '';
     actionsEl.innerHTML = `
+      <button class="icon-btn" onclick="openCatManager()" aria-label="ניהול קטגוריות">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+      </button>
       <button class="icon-btn" onclick="enterSelectMode()" aria-label="בחירה">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
       </button>
@@ -1788,17 +1919,13 @@ function attachSwipe(wrap) {
   let direction = 0; // -1 left, 1 right, 0 none
   let isSwiping = false;
   let scrollLock = false;
-  let longPressTimer = null;
-  let longPressFired = false;
   const threshold = 70;
   const maxDrag = 160;
-  const longPressMs = 500;
 
   function reset() {
     wrap.classList.remove('swiping', 'show-family', 'show-personal', 'ready');
     row.style.transform = '';
     dx = 0; direction = 0; isSwiping = false; scrollLock = false;
-    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
   }
 
   row.addEventListener('touchstart', e => {
@@ -1808,40 +1935,14 @@ function attachSwipe(wrap) {
     dx = 0;
     isSwiping = false;
     scrollLock = false;
-    longPressFired = false;
     wrap.classList.add('swiping');
-    longPressTimer = setTimeout(() => {
-      longPressTimer = null;
-      longPressFired = true;
-      lastSwipeCommittedAt = Date.now(); // suppress click after long-press
-      if (navigator.vibrate) navigator.vibrate(40);
-      const tx = transactions.find(x => x.id === txId);
-      if (!tx) return;
-      openCatPicker(tx.category, `קטגוריה ל-${tx.merchant}`, cat => {
-        if (cat === tx.category) return;
-        const oldCat = tx.category;
-        tx.category = cat;
-        dirty = true;
-        const label = cat || 'ללא קטגוריה';
-        setupUndo({
-          label: `${tx.merchant}: ${label}`,
-          apply: () => { tx.category = oldCat; }
-        });
-        render();
-      });
-    }, longPressMs);
   }, { passive: true });
 
   row.addEventListener('touchmove', e => {
     if (e.touches.length !== 1) return;
     const cdx = e.touches[0].clientX - startX;
     const cdy = e.touches[0].clientY - startY;
-    // Movement cancels long-press
-    if (longPressTimer && (Math.abs(cdx) > 6 || Math.abs(cdy) > 6)) {
-      clearTimeout(longPressTimer); longPressTimer = null;
-    }
-    if (longPressFired) return;
-    if (selectMode) return; // select-mode disables swipe
+    if (selectMode) return;
     if (!isSwiping && !scrollLock) {
       if (Math.abs(cdy) > 10 && Math.abs(cdy) > Math.abs(cdx)) {
         scrollLock = true;
@@ -1864,8 +1965,6 @@ function attachSwipe(wrap) {
   }, { passive: true });
 
   row.addEventListener('touchend', () => {
-    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
-    if (longPressFired) { reset(); return; }
     if (scrollLock || !isSwiping) {
       reset();
       return;
@@ -2059,6 +2158,10 @@ document.getElementById('catPicker').addEventListener('click', e => {
   if (e.target.id === 'catPicker') closeCatPicker();
 });
 
+document.getElementById('catManager').addEventListener('click', e => {
+  if (e.target.id === 'catManager') closeCatManager();
+});
+
 // ============ INIT ============
 const loaded = loadFromHash();
 if (loaded !== null) {
@@ -2071,24 +2174,6 @@ if (loaded !== null) {
   if (updated > 0) {
     dirty = true;
     showToast(`מולאו ${updated} קטגוריות אוטומטית`);
-  }
-  // Land on the calendar period containing the latest transaction,
-  // so opening the app after an import shows the right month right away.
-  if (transactions.length > 0) {
-    const latest = transactions.reduce((m, t) => t.date > m ? t.date : m, new Date(0));
-    const now = new Date();
-    if (currentPeriod === 'month') {
-      currentPeriodOffset = -((now.getFullYear() - latest.getFullYear()) * 12 + (now.getMonth() - latest.getMonth()));
-    } else if (currentPeriod === 'year') {
-      currentPeriodOffset = -(now.getFullYear() - latest.getFullYear());
-    } else if (currentPeriod === 'week') {
-      const msPerWeek = 7 * 24 * 60 * 60 * 1000;
-      // Align both dates to start-of-week (Sunday) before subtracting
-      const nowWeekStart = new Date(now); nowWeekStart.setDate(now.getDate() - now.getDay()); nowWeekStart.setHours(0,0,0,0);
-      const latestWeekStart = new Date(latest); latestWeekStart.setDate(latest.getDate() - latest.getDay()); latestWeekStart.setHours(0,0,0,0);
-      currentPeriodOffset = -Math.round((nowWeekStart - latestWeekStart) / msPerWeek);
-    }
-    if (currentPeriodOffset > 0) currentPeriodOffset = 0; // never future
   }
 }
 render();
