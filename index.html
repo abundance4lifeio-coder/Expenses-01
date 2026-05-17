@@ -419,6 +419,8 @@ body {
   z-index: 20; animation: fadeIn 0.2s ease;
 }
 .modal-overlay.visible { display: flex; }
+/* Nested pickers opened from within other modals must layer on top */
+#actionSheet, #catPicker { z-index: 30; }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
 
