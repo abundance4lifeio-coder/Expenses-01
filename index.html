@@ -185,10 +185,7 @@ body {
   scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
   padding-bottom: 2px;
-  /* Fade out the trailing edge so partially-clipped chips look intentional and hint at scrolling.
-     In RTL the trailing visual edge is the LEFT side of the row. */
-  -webkit-mask-image: linear-gradient(to right, transparent 0, black 28px, black calc(100% - 4px), black 100%);
-  mask-image: linear-gradient(to right, transparent 0, black 28px, black calc(100% - 4px), black 100%);
+  padding-inline-start: 6px;
 }
 .scope-chips::-webkit-scrollbar, .card-chips::-webkit-scrollbar { display: none; }
 
