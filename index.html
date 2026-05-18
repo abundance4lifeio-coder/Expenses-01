@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+
 <html lang="he" dir="rtl">
 <head>
 <meta charset="UTF-8">
@@ -11,6 +12,7 @@
 <title>הוצאות</title>
 
 <!-- SheetJS for .xlsx parsing (Israeli card statements). Cached after first load. -->
+
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 
 <style>
@@ -740,12 +742,19 @@ body {
 
 .select-mode .fab { display: none; }
 </style>
+
 </head>
 <body>
 
 <div class="header" id="header">
   <h1 id="headerTitle">הוצאות</h1>
   <div class="header-actions" id="headerActions">
+    <button class="icon-btn" onclick="refreshFromFile()" aria-label="רענון">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="23 4 23 10 17 10"/>
+        <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+      </svg>
+    </button>
     <button class="icon-btn" onclick="openCatManager()" aria-label="ניהול קטגוריות">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/>
@@ -807,6 +816,7 @@ body {
 </div>
 
 <!-- EDIT / ADD MODAL -->
+
 <div class="modal-overlay" id="modal">
   <div class="modal">
     <div class="modal-handle"></div>
@@ -860,6 +870,7 @@ body {
 </div>
 
 <!-- IMPORT MODAL -->
+
 <div class="modal-overlay" id="importModal">
   <div class="modal">
     <div class="modal-handle"></div>
@@ -888,6 +899,7 @@ body {
 </div>
 
 <!-- DESTRUCTIVE CONFIRM (bulk delete) -->
+
 <div class="modal-overlay" id="confirmModal">
   <div class="modal confirm-modal">
     <div class="modal-handle"></div>
@@ -907,6 +919,7 @@ body {
 </div>
 
 <!-- ACTION SHEET (generic) -->
+
 <div class="modal-overlay" id="actionSheet">
   <div class="modal">
     <div class="modal-handle"></div>
@@ -920,6 +933,7 @@ body {
 </div>
 
 <!-- CATEGORY MANAGER -->
+
 <div class="modal-overlay" id="catManager">
   <div class="modal">
     <div class="modal-handle"></div>
@@ -934,6 +948,7 @@ body {
 </div>
 
 <!-- CATEGORY PICKER -->
+
 <div class="modal-overlay" id="catPicker">
   <div class="modal">
     <div class="modal-handle"></div>
@@ -1899,29 +1914,20 @@ async function saveChanges() {
     showToast('כתיבה ללוח חסומה. נסה שוב.');
     return;
   }
-  // Mark that we just saved; the visibility handler below will auto-refresh from file
-  // when the user returns to Safari, replacing the current tab (no new tabs).
-  sessionStorage.setItem('pendingRefresh', '1');
   window.location.href = 'shortcuts://run-shortcut?name=' + encodeURIComponent(SAVE_SHORTCUT_NAME);
   dirty = false;
-  setTimeout(() => { render(); }, 300);
+  setTimeout(() => { render(); showToast('נשמר'); }, 300);
 }
-
-// When the user returns to Safari after the Save shortcut, auto-fetch fresh data
-// by firing View Expenses. Using location.href (not target=_blank or Open URLs)
-// ensures the new URL REPLACES the current tab — no tab proliferation.
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState !== 'visible') return;
-  if (sessionStorage.getItem('pendingRefresh') !== '1') return;
-  sessionStorage.removeItem('pendingRefresh');
-  // Small delay so Dropbox-on-iOS has time to flush the file write before View Expenses re-fetches
-  setTimeout(() => {
-    window.location.href = 'shortcuts://run-shortcut?name=' + encodeURIComponent(VIEW_SHORTCUT_NAME);
-  }, 800);
-});
 
 function launchViewShortcut() {
   window.location.href = 'shortcuts://run-shortcut?name=' + encodeURIComponent(VIEW_SHORTCUT_NAME);
+}
+
+function refreshFromFile() {
+  if (dirty) {
+    if (!confirm('יש שינויים שלא נשמרו. לרענן בכל זאת ולאבד אותם?')) return;
+  }
+  launchViewShortcut();
 }
 
 // ============ CATEGORY PICKER ============
@@ -2215,6 +2221,9 @@ function updateHeader() {
     titleEl.style.display = '';
     titleEl.style.alignItems = '';
     actionsEl.innerHTML = `
+      <button class="icon-btn" onclick="refreshFromFile()" aria-label="רענון">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+      </button>
       <button class="icon-btn" onclick="openCatManager()" aria-label="ניהול קטגוריות">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
       </button>
@@ -2780,5 +2789,6 @@ function renderDesktopWelcome() {
   render();
 })();
 </script>
+
 </body>
 </html>
