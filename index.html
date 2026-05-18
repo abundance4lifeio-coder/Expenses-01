@@ -32,6 +32,7 @@
   --family: #ff9500;
   --personal: #5856d6;
   --recurring: #00b8a9;
+  --one-time: #ff2d8a;
   --field-bg: rgba(118, 118, 128, 0.08);
   --overlay-bg: rgba(0,0,0,0.45);
   --header-bg: rgba(248, 248, 250, 0.82);
@@ -198,6 +199,7 @@ body {
 .scope-chip[data-scope="Family"].active { background: var(--family); }
 .scope-chip[data-scope="Personal"].active { background: var(--personal); }
 .scope-chip[data-scope="__recurring"].active { background: var(--recurring); }
+.scope-chip[data-scope="__onetime"].active { background: var(--one-time); }
 
 .card-chips { margin-bottom: 18px; }
 
@@ -268,6 +270,59 @@ body {
   color: var(--recurring);
   vertical-align: middle;
 }
+
+.onetime-icon {
+  display: inline-block;
+  margin-inline-start: 4px;
+  font-size: 11px;
+  color: var(--one-time);
+  vertical-align: middle;
+}
+
+.onetime-pill {
+  display: inline-block;
+  font-size: 11px; font-weight: 500;
+  padding: 1px 8px;
+  border-radius: 100px;
+  background: rgba(255, 45, 138, 0.18);
+  color: var(--one-time);
+}
+
+.event-row {
+  padding: 12px 14px;
+  border-bottom: 0.5px solid var(--separator);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.event-row:last-child { border-bottom: 0; }
+.event-row:active { background: var(--field-bg); }
+.event-row.active { background: rgba(255, 45, 138, 0.10); }
+.event-row .row-top {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 7px;
+}
+.event-row .left {
+  display: flex; align-items: center; gap: 8px;
+  flex: 1; min-width: 0;
+}
+.event-row .event-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--one-time);
+  flex-shrink: 0;
+}
+.event-row .event-name {
+  font-size: 14px; font-weight: 500;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.event-row .event-amount {
+  font-size: 14px; font-variant-numeric: tabular-nums;
+  direction: ltr; unicode-bidi: isolate;
+}
+.event-row .event-meta {
+  font-size: 11px; color: var(--text-secondary);
+  margin-top: 4px; padding-inline-start: 16px;
+}
+.bar-fill.onetime { background: var(--one-time); }
 
 .installment-badge {
   display: inline-block;
@@ -341,6 +396,7 @@ body {
 .cat-option:last-child { border-bottom: 0; }
 .cat-option:active { background: var(--field-bg); }
 .cat-option.empty { color: var(--text-secondary); font-style: italic; }
+.cat-option.special { color: var(--one-time); font-weight: 500; }
 .cat-option .check { color: var(--accent); font-size: 18px; }
 .cat-option.active { color: var(--accent); font-weight: 600; }
 
@@ -461,7 +517,7 @@ body {
   display: flex; align-items: center;
 }
 .field-label { font-size: 14px; color: var(--text-secondary); width: 86px; flex-shrink: 0; }
-.field input, .field select, .field textarea {
+.field input:not([type="checkbox"]), .field select, .field textarea {
   flex: 1; background: transparent; border: none;
   font-size: 16px; color: var(--text); font-family: inherit;
   outline: none; -webkit-appearance: none;
@@ -746,6 +802,7 @@ body {
 .action-bar button:active { transform: scale(0.97); }
 .action-bar button.family { background: var(--family); color: white; }
 .action-bar button.personal { background: var(--personal); color: white; }
+.action-bar button.onetime { background: var(--one-time); color: white; }
 .action-bar.disabled button { opacity: 0.4; pointer-events: none; }
 
 .select-mode .fab { display: none; }
@@ -812,6 +869,7 @@ body {
     <button class="scope-chip" data-scope="Family">משפחה</button>
     <button class="scope-chip" data-scope="Personal">אישי</button>
     <button class="scope-chip" data-scope="__recurring">קבועות</button>
+    <button class="scope-chip" data-scope="__onetime">חד״פ</button>
     <button class="scope-chip" data-scope="__untagged">ללא תיוג</button>
   </div>
   <div id="content"></div>
@@ -823,6 +881,7 @@ body {
   <button onclick="applyBulkScope('')">ללא</button>
   <button class="family" onclick="applyBulkScope('Family')">משפחה</button>
   <button class="personal" onclick="applyBulkScope('Personal')">אישי</button>
+  <button class="onetime" onclick="promptBulkOneTime()">חד״פ</button>
 </div>
 
 <!-- EDIT / ADD MODAL -->
@@ -864,6 +923,13 @@ body {
     <div class="field">
       <div class="field-label">קבועה</div>
       <input type="checkbox" id="fRecurring" class="ios-switch">
+    </div>
+    <div class="field">
+      <div class="field-label">חד״פ</div>
+      <button class="field-value-btn placeholder" id="fOneTimeBtn" type="button" onclick="pickEditOneTime()">
+        <span id="fOneTimeLabel">לא משויך לאירוע</span>
+        <span class="chev">›</span>
+      </button>
     </div>
     <div class="field">
       <div class="field-label">כרטיס</div>
@@ -1092,7 +1158,8 @@ function parseCSV(text) {
       scope: parts[5] || '',
       subcategory: parts[6] || '',
       recurring: parts[7] === '1',
-      installment: parts[8] || ''
+      installment: parts[8] || '',
+      oneTime: parts[9] || ''
     });
   }
   return rows.sort((a, b) => b.date - a.date);
@@ -1118,7 +1185,8 @@ function toCSV(txs) {
     clean(t.scope),
     clean(t.subcategory),
     t.recurring ? '1' : '',
-    clean(t.installment || '')
+    clean(t.installment || ''),
+    clean(t.oneTime || '')
   ].join(',')).join('\n') + '\n';
 }
 
@@ -1138,6 +1206,11 @@ function filterByScope(txs, scope) {
   if (!scope) return txs;
   if (scope === '__untagged') return txs.filter(t => !t.scope);
   if (scope === '__recurring') return txs.filter(t => t.recurring);
+  if (scope === '__onetime') return txs.filter(t => t.oneTime);
+  if (scope.startsWith('__event:')) {
+    const name = scope.slice('__event:'.length);
+    return txs.filter(t => t.oneTime === name);
+  }
   return txs.filter(t => t.scope === scope);
 }
 function filterByCard(txs, card) {
@@ -1229,8 +1302,16 @@ function getAllCategories() {
   return Array.from(cats).sort((a, b) => a.localeCompare(b, 'he'));
 }
 
+function getAllEvents() {
+  const events = new Set();
+  for (const t of transactions) {
+    if (t.oneTime && t.oneTime.trim()) events.add(t.oneTime);
+  }
+  return Array.from(events).sort((a, b) => a.localeCompare(b, 'he'));
+}
+
 // ============ RENDER ============
-const SCOPE_LABELS = { Family: 'משפחה', Personal: 'אישי', __untagged: 'ללא תיוג', __recurring: 'קבועות' };
+const SCOPE_LABELS = { Family: 'משפחה', Personal: 'אישי', __untagged: 'ללא תיוג', __recurring: 'קבועות', __onetime: 'חד״פ' };
 
 function renderStepper() {
   const stepper = document.getElementById('periodStepper');
@@ -1341,7 +1422,13 @@ function render() {
   const maxCard = cardBreakdown[0]?.[1] || 1;
 
   const labelParts = [getPeriodLabel(currentPeriod, currentPeriodOffset)];
-  if (currentScope) labelParts.push(SCOPE_LABELS[currentScope] || currentScope);
+  if (currentScope) {
+    if (currentScope.startsWith('__event:')) {
+      labelParts.push(currentScope.slice('__event:'.length));
+    } else {
+      labelParts.push(SCOPE_LABELS[currentScope] || currentScope);
+    }
+  }
   if (currentCard) labelParts.push(currentCard === '__nocard' ? 'ללא כרטיס' : currentCard);
   if (currentCategory) labelParts.push(currentCategory === '__empty' ? 'ללא קטגוריה' : currentCategory);
   if (searchQuery) labelParts.push('מסונן');
@@ -1375,6 +1462,42 @@ function render() {
               <span class="card-amount">${fmtMoney(amt)}</span>
             </div>
             <div class="bar"><div class="bar-fill" style="width:${pct}%"></div></div>
+          </div>`;
+      }
+      html += `</div>`;
+    }
+
+    // חד״פ · לפי אירוע — only when filtered set has one-time events
+    const byEvent = {};
+    const eventStats = {}; // {event: {count, cats: Set}}
+    for (const t of filteredPreCat) {
+      if (!t.oneTime) continue;
+      byEvent[t.oneTime] = (byEvent[t.oneTime] || 0) + t.amount;
+      if (!eventStats[t.oneTime]) eventStats[t.oneTime] = { count: 0, cats: new Set() };
+      eventStats[t.oneTime].count++;
+      if (t.category) eventStats[t.oneTime].cats.add(t.category);
+    }
+    const events = Object.entries(byEvent).sort((a, b) => b[1] - a[1]);
+    if (events.length > 0) {
+      const maxEv = events[0][1];
+      html += `<div class="section-title">חד״פ · לפי אירוע</div><div class="card">`;
+      for (const [name, amt] of events) {
+        const pct = (amt / maxEv) * 100;
+        const stats = eventStats[name];
+        const catsList = Array.from(stats.cats).slice(0, 3).join(' · ');
+        const isActive = currentScope === '__event:' + name;
+        const activeClass = isActive ? ' active' : '';
+        html += `
+          <div class="event-row${activeClass}" data-event="${escapeHtml(name)}">
+            <div class="row-top">
+              <div class="left">
+                <div class="event-dot"></div>
+                <span class="event-name">${escapeHtml(name)}</span>
+              </div>
+              <span class="event-amount">${fmtMoney(amt)}</span>
+            </div>
+            <div class="bar"><div class="bar-fill onetime" style="width:${pct}%"></div></div>
+            <div class="event-meta">${stats.count} עסקאות${catsList ? ' · ' + escapeHtml(catsList) : ''}</div>
           </div>`;
       }
       html += `</div>`;
@@ -1436,7 +1559,11 @@ function render() {
       const selClass = selectedIds.has(t.id) ? ' selected' : '';
       const checkbox = selectMode ? '<div class="tx-checkbox"></div>' : '';
       const recurIcon = t.recurring ? '<span class="recurring-icon" title="הוצאה קבועה">⟲</span>' : '';
+      const oneTimeIcon = t.oneTime ? `<span class="onetime-icon" title="${escapeHtml(t.oneTime)}">◆</span>` : '';
       const instBadge = t.installment ? `<span class="installment-badge">${escapeHtml(t.installment)}</span>` : '';
+      // For one-time rows, put the event name in the meta line as a pink pill
+      const onetimeMeta = t.oneTime ? `<span class="onetime-pill">${escapeHtml(t.oneTime)}</span>` : '';
+      const fullMeta = onetimeMeta ? [onetimeMeta, ...metaItems] : metaItems;
       html += `
         <div class="tx-swipe-wrap" data-id="${t.id}">
           <div class="swipe-bg swipe-bg-family">${famLabel}</div>
@@ -1444,8 +1571,8 @@ function render() {
           <div class="tx-row${selClass}" data-id="${t.id}" data-scope="${escapeHtml(t.scope)}">
             ${checkbox}
             <div class="tx-info">
-              <div class="tx-merchant">${escapeHtml(t.merchant)}${instBadge}${recurIcon}</div>
-              <div class="tx-meta">${metaItems.join(' · ')}</div>
+              <div class="tx-merchant">${escapeHtml(t.merchant)}${instBadge}${recurIcon}${oneTimeIcon}</div>
+              <div class="tx-meta">${fullMeta.join(' · ')}</div>
             </div>
             <div class="tx-amount">${fmtMoney(t.amount)}</div>
             <div class="tx-chevron">›</div>
@@ -1463,6 +1590,20 @@ function render() {
     el.addEventListener('click', () => {
       const cat = el.dataset.cat;
       currentCategory = (currentCategory === cat) ? '' : cat;
+      render();
+    });
+  });
+  document.querySelectorAll('.event-row').forEach(el => {
+    el.addEventListener('click', () => {
+      const ev = el.dataset.event;
+      const sentinel = '__event:' + ev;
+      currentScope = (currentScope === sentinel) ? '' : sentinel;
+      // Reflect on chips: deactivate all then activate the right one
+      document.querySelectorAll('#scopeChips button').forEach(b => b.classList.remove('active'));
+      const matchChip = currentScope === ''
+        ? document.querySelector('#scopeChips button[data-scope=""]')
+        : null;
+      if (matchChip) matchChip.classList.add('active');
       render();
     });
   });
@@ -1487,6 +1628,7 @@ function setScopeButton(scope) {
 }
 
 let editingCategory = '';
+let editingOneTime = '';
 
 function setCategoryLabel(cat) {
   editingCategory = cat || '';
@@ -1499,6 +1641,17 @@ function pickEditCategory() {
   openCatPicker(editingCategory, 'בחירת קטגוריה', cat => setCategoryLabel(cat));
 }
 
+function setOneTimeLabel(name) {
+  editingOneTime = name || '';
+  const lbl = document.getElementById('fOneTimeLabel');
+  lbl.textContent = name || 'לא משויך לאירוע';
+  document.getElementById('fOneTimeBtn').classList.toggle('placeholder', !name);
+}
+
+function pickEditOneTime() {
+  openOneTimePicker(editingOneTime, 'אירוע חד-פעמי', name => setOneTimeLabel(name));
+}
+
 function openEdit(id) {
   const t = transactions.find(x => x.id === id);
   if (!t) return;
@@ -1508,6 +1661,7 @@ function openEdit(id) {
   document.getElementById('fMerchant').value = t.merchant;
   document.getElementById('fCard').value = t.card;
   setCategoryLabel(t.category);
+  setOneTimeLabel(t.oneTime || '');
   document.getElementById('fRecurring').checked = !!t.recurring;
   document.getElementById('fSubcategory').value = t.subcategory;
   setScopeButton(t.scope || '');
@@ -1523,6 +1677,7 @@ function openAdd() {
   document.getElementById('fMerchant').value = '';
   document.getElementById('fCard').value = currentCard || '';
   setCategoryLabel('');
+  setOneTimeLabel('');
   document.getElementById('fRecurring').checked = false;
   document.getElementById('fSubcategory').value = '';
   setScopeButton(currentScope || '');
@@ -1542,6 +1697,7 @@ function saveModal() {
   const merchant = document.getElementById('fMerchant').value.trim();
   const card = document.getElementById('fCard').value.trim();
   const category = editingCategory;
+  const oneTime = editingOneTime;
   const recurring = document.getElementById('fRecurring').checked;
   const subcategory = document.getElementById('fSubcategory').value.trim();
   const scope = document.querySelector('#scopeSegment button.active')?.dataset.scope || '';
@@ -1553,9 +1709,9 @@ function saveModal() {
   const date = new Date(dateStr);
   if (editingId) {
     const t = transactions.find(x => x.id === editingId);
-    Object.assign(t, { amount, merchant, card, category, recurring, subcategory, scope, date });
+    Object.assign(t, { amount, merchant, card, category, recurring, subcategory, scope, date, oneTime });
   } else {
-    transactions.push({ id: uuid(), amount, merchant, card, category, recurring, subcategory, scope, date, installment: '' });
+    transactions.push({ id: uuid(), amount, merchant, card, category, recurring, subcategory, scope, date, installment: '', oneTime });
   }
   dirty = true;
   closeModal();
@@ -1866,7 +2022,8 @@ function performImport() {
     scope,
     subcategory: '',
     recurring: false,
-    installment: r.tx.installment || ''
+    installment: r.tx.installment || '',
+    oneTime: ''
   }));
   if (fresh.length === 0) {
     closeImportModal();
@@ -1982,6 +2139,48 @@ function openCatPicker(currentCat, title, callback) {
 function closeCatPicker() {
   document.getElementById('catPicker').classList.remove('visible');
   catPickerCallback = null;
+}
+
+// One-time-event picker — re-uses the catPicker overlay but for event names
+function openOneTimePicker(currentName, title, callback) {
+  catPickerCallback = callback;
+  document.getElementById('catPickerTitle').textContent = title || 'אירוע חד-פעמי';
+  const list = document.getElementById('catPickerList');
+  const events = getAllEvents();
+  // Items: empty first, then events, then "New event…" sentinel
+  const items = [
+    { value: '', label: 'לא משויך לאירוע', empty: true },
+    ...events.map(e => ({ value: e, label: e })),
+    { value: '__new__', label: '+ אירוע חדש…', special: true }
+  ];
+  list.innerHTML = items.map(item => {
+    const isActive = (currentName || '') === item.value && item.value !== '__new__';
+    let cls = 'cat-option';
+    if (item.empty) cls += ' empty';
+    if (item.special) cls += ' special';
+    if (isActive) cls += ' active';
+    return `<button class="${cls}" data-event="${escapeHtml(item.value)}">
+      <span>${escapeHtml(item.label)}</span>
+      ${isActive ? '<span class="check">✓</span>' : ''}
+    </button>`;
+  }).join('');
+  list.querySelectorAll('.cat-option').forEach(el => {
+    el.addEventListener('click', () => {
+      const v = el.dataset.event;
+      if (v === '__new__') {
+        const name = prompt('שם האירוע החדש:');
+        if (!name || !name.trim()) return; // keep picker open
+        const cb = catPickerCallback;
+        closeCatPicker();
+        if (cb) cb(name.trim());
+        return;
+      }
+      const cb = catPickerCallback;
+      closeCatPicker();
+      if (cb) cb(v);
+    });
+  });
+  document.getElementById('catPicker').classList.add('visible');
 }
 
 // ============ ACTION SHEET ============
@@ -2337,6 +2536,47 @@ function applyBulkScope(newScope) {
   });
   ensureShakeListener();
   exitSelectMode();
+}
+
+function promptBulkOneTime() {
+  if (selectedIds.size === 0) return;
+  // Snapshot ids now since picker will close the bar
+  const ids = Array.from(selectedIds);
+  openOneTimePicker('', `שיוך ${ids.length} עסקאות לאירוע`, name => {
+    // name can be '' (clear), or an event name (set/create)
+    const oldValues = {};
+    let changedCount = 0;
+    for (const id of ids) {
+      const t = transactions.find(x => x.id === id);
+      if (!t) continue;
+      const current = t.oneTime || '';
+      if (current !== name) {
+        oldValues[id] = current;
+        t.oneTime = name;
+        changedCount++;
+      }
+    }
+    if (changedCount === 0) {
+      exitSelectMode();
+      showToast('אין שינויים');
+      return;
+    }
+    dirty = true;
+    const label = name
+      ? `שויכו ${changedCount} עסקאות ל-"${name}"`
+      : `הוסר שיוך מ-${changedCount} עסקאות`;
+    setupUndo({
+      label,
+      apply: () => {
+        for (const id in oldValues) {
+          const t = transactions.find(x => x.id === id);
+          if (t) t.oneTime = oldValues[id];
+        }
+      }
+    });
+    ensureShakeListener();
+    exitSelectMode();
+  });
 }
 
 function promptBulkDelete() {
