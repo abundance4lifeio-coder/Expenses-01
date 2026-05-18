@@ -1,5 +1,4 @@
 <!DOCTYPE html>
-
 <html lang="he" dir="rtl">
 <head>
 <meta charset="UTF-8">
@@ -12,7 +11,6 @@
 <title>הוצאות</title>
 
 <!-- SheetJS for .xlsx parsing (Israeli card statements). Cached after first load. -->
-
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 
 <style>
@@ -742,7 +740,6 @@ body {
 
 .select-mode .fab { display: none; }
 </style>
-
 </head>
 <body>
 
@@ -816,7 +813,6 @@ body {
 </div>
 
 <!-- EDIT / ADD MODAL -->
-
 <div class="modal-overlay" id="modal">
   <div class="modal">
     <div class="modal-handle"></div>
@@ -870,7 +866,6 @@ body {
 </div>
 
 <!-- IMPORT MODAL -->
-
 <div class="modal-overlay" id="importModal">
   <div class="modal">
     <div class="modal-handle"></div>
@@ -899,7 +894,6 @@ body {
 </div>
 
 <!-- DESTRUCTIVE CONFIRM (bulk delete) -->
-
 <div class="modal-overlay" id="confirmModal">
   <div class="modal confirm-modal">
     <div class="modal-handle"></div>
@@ -919,7 +913,6 @@ body {
 </div>
 
 <!-- ACTION SHEET (generic) -->
-
 <div class="modal-overlay" id="actionSheet">
   <div class="modal">
     <div class="modal-handle"></div>
@@ -933,7 +926,6 @@ body {
 </div>
 
 <!-- CATEGORY MANAGER -->
-
 <div class="modal-overlay" id="catManager">
   <div class="modal">
     <div class="modal-handle"></div>
@@ -948,7 +940,6 @@ body {
 </div>
 
 <!-- CATEGORY PICKER -->
-
 <div class="modal-overlay" id="catPicker">
   <div class="modal">
     <div class="modal-handle"></div>
@@ -971,6 +962,14 @@ body {
 // ============ CONFIG ============
 const CURRENCY = 'ILS';
 const LOCALE = 'he-IL';
+
+// Dropbox app config
+// App folder: /Apps/ExpenseTracker-[01]/ on the user's Dropbox
+const DROPBOX_APP_KEY = 'c5sa9zhd57gxjr3';
+const DROPBOX_REDIRECT_URI = window.location.origin + window.location.pathname;
+const DROPBOX_FILE_PATH = '/Expenses.csv'; // relative to the App folder root
+
+// Legacy iOS Shortcut names — kept for fallback if Dropbox fails
 const SAVE_SHORTCUT_NAME = 'Save Expenses';
 const VIEW_SHORTCUT_NAME = 'View Expenses';
 
@@ -1897,16 +1896,17 @@ function backfillCategories() {
 // ============ SAVE BACK ============
 async function saveChanges() {
   if (!dirty || !dataLoaded) return;
-  // Desktop mode: write directly to the picked file
+  // Dropbox API path — preferred
+  if (DBX.isAuthenticated()) {
+    await saveToDropbox();
+    return;
+  }
+  // Desktop File System Access path — secondary fallback
   if (desktopFileHandle) {
     await saveDesktopFile();
     return;
   }
-  // iOS Shortcut path: clipboard + launch Save Expenses shortcut
-  // iOS auto-detects URL-like patterns in clipboard text and can open them.
-  // To prevent that, we insert a zero-width joiner after any ".com/" / ".co.il/" / etc.
-  // so the link no longer matches. The Save shortcut writes the text verbatim
-  // and the PWA strips the marker on re-parse.
+  // Legacy iOS Shortcut path — last resort
   const csv = toCSV(transactions).replace(/(\.[a-z]{2,4}(?:\.[a-z]{2,4})?)\//gi, '$1\u200B/');
   try {
     await navigator.clipboard.writeText(csv);
@@ -1926,6 +1926,10 @@ function launchViewShortcut() {
 function refreshFromFile() {
   if (dirty) {
     if (!confirm('יש שינויים שלא נשמרו. לרענן בכל זאת ולאבד אותם?')) return;
+  }
+  if (DBX.isAuthenticated()) {
+    loadFromDropbox().catch(e => console.error(e));
+    return;
   }
   launchViewShortcut();
 }
@@ -2751,11 +2755,192 @@ function renderDesktopWelcome() {
   document.querySelector('.search').style.display = 'none';
 }
 
+// ============ DROPBOX CLIENT ============
+// PKCE OAuth flow + read/write of the CSV file.
+// No server, no client secret — the token sits in localStorage.
+
+const DBX = (() => {
+  const TOKEN_KEY = 'dbx_token';
+  const VERIFIER_KEY = 'dbx_pkce_verifier';
+  const REFRESH_KEY = 'dbx_refresh_token';
+  const EXPIRES_KEY = 'dbx_expires_at';
+
+  function getToken() { return localStorage.getItem(TOKEN_KEY); }
+  function getRefreshToken() { return localStorage.getItem(REFRESH_KEY); }
+  function isExpired() {
+    const exp = parseInt(localStorage.getItem(EXPIRES_KEY) || '0', 10);
+    return !exp || Date.now() > exp - 60000; // 1min skew
+  }
+  function setTokens({ access_token, refresh_token, expires_in }) {
+    localStorage.setItem(TOKEN_KEY, access_token);
+    if (refresh_token) localStorage.setItem(REFRESH_KEY, refresh_token);
+    if (expires_in) localStorage.setItem(EXPIRES_KEY, String(Date.now() + expires_in * 1000));
+  }
+  function clearTokens() {
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(REFRESH_KEY);
+    localStorage.removeItem(EXPIRES_KEY);
+    localStorage.removeItem(VERIFIER_KEY);
+  }
+
+  // PKCE: generate a verifier + challenge pair
+  function base64UrlEncode(buf) {
+    return btoa(String.fromCharCode(...new Uint8Array(buf)))
+      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+  async function sha256(text) {
+    const enc = new TextEncoder().encode(text);
+    return await crypto.subtle.digest('SHA-256', enc);
+  }
+  function randomVerifier() {
+    const arr = new Uint8Array(64);
+    crypto.getRandomValues(arr);
+    return base64UrlEncode(arr);
+  }
+
+  async function startAuth() {
+    const verifier = randomVerifier();
+    localStorage.setItem(VERIFIER_KEY, verifier);
+    const challenge = base64UrlEncode(await sha256(verifier));
+    const params = new URLSearchParams({
+      client_id: DROPBOX_APP_KEY,
+      response_type: 'code',
+      redirect_uri: DROPBOX_REDIRECT_URI,
+      code_challenge: challenge,
+      code_challenge_method: 'S256',
+      token_access_type: 'offline' // returns refresh_token
+    });
+    window.location.href = 'https://www.dropbox.com/oauth2/authorize?' + params.toString();
+  }
+
+  async function completeAuth(code) {
+    const verifier = localStorage.getItem(VERIFIER_KEY);
+    if (!verifier) throw new Error('Missing PKCE verifier');
+    const body = new URLSearchParams({
+      code,
+      grant_type: 'authorization_code',
+      client_id: DROPBOX_APP_KEY,
+      redirect_uri: DROPBOX_REDIRECT_URI,
+      code_verifier: verifier
+    });
+    const res = await fetch('https://api.dropboxapi.com/oauth2/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body
+    });
+    if (!res.ok) throw new Error('Token exchange failed: ' + await res.text());
+    const json = await res.json();
+    setTokens(json);
+    localStorage.removeItem(VERIFIER_KEY);
+  }
+
+  async function refreshAccessToken() {
+    const rt = getRefreshToken();
+    if (!rt) throw new Error('No refresh token; need re-auth');
+    const body = new URLSearchParams({
+      grant_type: 'refresh_token',
+      refresh_token: rt,
+      client_id: DROPBOX_APP_KEY
+    });
+    const res = await fetch('https://api.dropboxapi.com/oauth2/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body
+    });
+    if (!res.ok) {
+      clearTokens(); // refresh failed, force re-auth
+      throw new Error('Refresh failed: ' + await res.text());
+    }
+    const json = await res.json();
+    setTokens(json);
+  }
+
+  async function ensureFreshToken() {
+    if (!getToken()) throw new Error('Not authenticated');
+    if (isExpired()) await refreshAccessToken();
+  }
+
+  async function downloadFile() {
+    await ensureFreshToken();
+    const res = await fetch('https://content.dropboxapi.com/2/files/download', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + getToken(),
+        'Dropbox-API-Arg': JSON.stringify({ path: DROPBOX_FILE_PATH })
+      }
+    });
+    if (res.status === 409) {
+      // File doesn't exist yet — treat as empty
+      return '';
+    }
+    if (!res.ok) throw new Error('Download failed (' + res.status + '): ' + await res.text());
+    return await res.text();
+  }
+
+  async function uploadFile(content) {
+    await ensureFreshToken();
+    const res = await fetch('https://content.dropboxapi.com/2/files/upload', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + getToken(),
+        'Content-Type': 'application/octet-stream',
+        'Dropbox-API-Arg': JSON.stringify({
+          path: DROPBOX_FILE_PATH,
+          mode: 'overwrite',
+          autorename: false,
+          mute: true
+        })
+      },
+      body: new TextEncoder().encode(content)
+    });
+    if (!res.ok) throw new Error('Upload failed (' + res.status + '): ' + await res.text());
+    return await res.json();
+  }
+
+  function isAuthenticated() {
+    return !!getToken();
+  }
+
+  function signOut() {
+    clearTokens();
+    location.reload();
+  }
+
+  return { startAuth, completeAuth, downloadFile, uploadFile, isAuthenticated, signOut };
+})();
+
 // ============ INIT ============
 (async function init() {
+  // Handle Dropbox OAuth redirect: ?code=... in URL means we just came back from Dropbox
+  const url = new URL(window.location.href);
+  const code = url.searchParams.get('code');
+  if (code) {
+    try {
+      await DBX.completeAuth(code);
+      // Clean ?code= from URL so it doesn't trigger again on refresh
+      history.replaceState(null, '', DROPBOX_REDIRECT_URI);
+      await loadFromDropbox();
+      return;
+    } catch (e) {
+      console.error('OAuth complete failed', e);
+      alert('שגיאה בהתחברות ל-Dropbox: ' + e.message);
+    }
+  }
+
+  // Already authenticated → load fresh from Dropbox
+  if (DBX.isAuthenticated()) {
+    try {
+      await loadFromDropbox();
+      return;
+    } catch (e) {
+      console.warn('Dropbox load failed, showing connect screen', e);
+      // Fall through to welcome screen
+    }
+  }
+
+  // Legacy iOS Shortcut hash path — still works if someone launches via View Expenses
   const loaded = loadFromHash();
   if (loaded !== null) {
-    // iOS Shortcut path
     transactions = loaded;
     dataLoaded = true;
     const updated = backfillCategories();
@@ -2764,31 +2949,55 @@ function renderDesktopWelcome() {
     return;
   }
 
-  // Desktop with File System Access support: try to silently re-open the saved handle
-  if (hasFileSystemAccess && isLikelyDesktop) {
-    try {
-      const handle = await idbGet('fileHandle');
-      if (handle) {
-        desktopFileHandle = handle;
-        // queryPermission first — if 'granted', re-load without prompting
-        const q = handle.queryPermission ? await handle.queryPermission({ mode: 'readwrite' }) : 'granted';
-        if (q === 'granted') {
-          await loadDesktopFile();
-          return;
-        }
-        // Otherwise show the welcome with "Choose file" — user will tap and re-grant
-      }
-    } catch (e) {
-      console.warn('Handle restore failed:', e);
-    }
-    renderDesktopWelcome();
-    return;
-  }
-
-  // Fall through: phone welcome screen (the existing one in render())
-  render();
+  // Not authenticated and no hash data: show the Dropbox connect screen
+  renderConnectWelcome();
 })();
-</script>
 
+async function loadFromDropbox() {
+  try {
+    showToast('טוען מ-Dropbox…');
+    const text = await DBX.downloadFile();
+    transactions = parseCSV(text);
+    dataLoaded = true;
+    const updated = backfillCategories();
+    if (updated > 0) { dirty = true; showToast(`מולאו ${updated} קטגוריות אוטומטית`); }
+    render();
+  } catch (e) {
+    console.error('Dropbox load error', e);
+    showToast('שגיאה בטעינה: ' + e.message);
+    throw e;
+  }
+}
+
+async function saveToDropbox() {
+  if (!dataLoaded) return;
+  try {
+    await DBX.uploadFile(toCSV(transactions));
+    dirty = false;
+    render();
+    showToast('נשמר ל-Dropbox');
+  } catch (e) {
+    console.error('Dropbox save error', e);
+    showToast('שגיאה בשמירה: ' + e.message);
+  }
+}
+
+function renderConnectWelcome() {
+  document.getElementById('content').innerHTML = `
+    <div class="card empty" style="margin-top:32px;padding:36px 24px">
+      <div style="font-size:46px;margin-bottom:12px">📊</div>
+      <div style="font-size:18px;font-weight:600;color:var(--text);margin-bottom:8px">התחברות ל-Dropbox</div>
+      <div style="margin-bottom:22px;line-height:1.5">האפליקציה קוראת וכותבת קובץ אחד בלבד: <strong>Expenses.csv</strong> בתיקיית האפליקציה שלך ב-Dropbox.</div>
+      <button class="save-btn visible" style="display:inline-block" onclick="DBX.startAuth()">התחבר ל-Dropbox</button>
+    </div>
+  `;
+  document.querySelector('.fab').style.display = 'none';
+  document.getElementById('periodSegment').style.display = 'none';
+  document.getElementById('periodStepper').style.display = 'none';
+  document.getElementById('scopeChips').style.display = 'none';
+  document.getElementById('cardChips').style.display = 'none';
+  document.querySelector('.search').style.display = 'none';
+}
+</script>
 </body>
 </html>
