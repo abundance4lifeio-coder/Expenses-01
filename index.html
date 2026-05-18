@@ -1030,6 +1030,8 @@ function sameDay(a, b) {
 // CSV columns: date, amount, merchant, card, category, scope, subcategory
 function parseCSV(text) {
   if (!text) return [];
+  // Strip any zero-width markers we inject during clipboard writes (URL-neutralization)
+  text = text.replace(/\u200B/g, '');
   parentCategories = {};
   const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
   const rows = [];
@@ -1886,17 +1888,37 @@ async function saveChanges() {
     return;
   }
   // iOS Shortcut path: clipboard + launch Save Expenses shortcut
-  const csv = toCSV(transactions);
+  // iOS auto-detects URL-like patterns in clipboard text and can open them.
+  // To prevent that, we insert a zero-width joiner after any ".com/" / ".co.il/" / etc.
+  // so the link no longer matches. The Save shortcut writes the text verbatim
+  // and the PWA strips the marker on re-parse.
+  const csv = toCSV(transactions).replace(/(\.[a-z]{2,4}(?:\.[a-z]{2,4})?)\//gi, '$1\u200B/');
   try {
     await navigator.clipboard.writeText(csv);
   } catch (e) {
     showToast('כתיבה ללוח חסומה. נסה שוב.');
     return;
   }
+  // Mark that we just saved; the visibility handler below will auto-refresh from file
+  // when the user returns to Safari, replacing the current tab (no new tabs).
+  sessionStorage.setItem('pendingRefresh', '1');
   window.location.href = 'shortcuts://run-shortcut?name=' + encodeURIComponent(SAVE_SHORTCUT_NAME);
   dirty = false;
-  setTimeout(() => { render(); showToast('נשמר'); }, 300);
+  setTimeout(() => { render(); }, 300);
 }
+
+// When the user returns to Safari after the Save shortcut, auto-fetch fresh data
+// by firing View Expenses. Using location.href (not target=_blank or Open URLs)
+// ensures the new URL REPLACES the current tab — no tab proliferation.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  if (sessionStorage.getItem('pendingRefresh') !== '1') return;
+  sessionStorage.removeItem('pendingRefresh');
+  // Small delay so Dropbox-on-iOS has time to flush the file write before View Expenses re-fetches
+  setTimeout(() => {
+    window.location.href = 'shortcuts://run-shortcut?name=' + encodeURIComponent(VIEW_SHORTCUT_NAME);
+  }, 800);
+});
 
 function launchViewShortcut() {
   window.location.href = 'shortcuts://run-shortcut?name=' + encodeURIComponent(VIEW_SHORTCUT_NAME);
