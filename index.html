@@ -136,7 +136,7 @@ body {
 
 .segment {
   display: flex; background: var(--field-bg); border-radius: 9px; padding: 2px;
-  margin: 4px 0 4px;
+  margin: 4px 0 14px;
 }
 .segment button {
   flex: 1; background: transparent; border: 0; padding: 7px 0;
@@ -180,11 +180,15 @@ body {
 }
 
 .scope-chips, .card-chips {
-  display: flex; gap: 8px; margin: 0 0 12px;
+  display: flex; gap: 10px; margin: 0 0 12px;
   overflow-x: auto;
   scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
   padding-bottom: 2px;
+  /* Fade out the trailing edge so partially-clipped chips look intentional and hint at scrolling.
+     In RTL the trailing visual edge is the LEFT side of the row. */
+  -webkit-mask-image: linear-gradient(to right, transparent 0, black 28px, black calc(100% - 4px), black 100%);
+  mask-image: linear-gradient(to right, transparent 0, black 28px, black calc(100% - 4px), black 100%);
 }
 .scope-chips::-webkit-scrollbar, .card-chips::-webkit-scrollbar { display: none; }
 
